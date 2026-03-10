@@ -216,6 +216,10 @@ def generate_reports():
         except Exception as e:
             print(f"   [ERROR] Failed: {type(e).__name__}: {e}")
             failed += 1
+        finally:
+            temp_path = ROOT / temp_output
+            if temp_path.exists():
+                temp_path.unlink()
 
     # Summary
     print("\n" + "=" * 70)

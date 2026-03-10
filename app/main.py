@@ -3753,6 +3753,14 @@ TOP 10 MOST ENGAGED COMPANIES:
             if not response:
                 return
 
+        try:
+            smtp_port = int(self.smtp_port_var.get() or 587)
+            if not 1 <= smtp_port <= 65535:
+                raise ValueError(f"Port must be 1–65535, got {smtp_port}")
+        except ValueError as port_err:
+            messagebox.showerror("Invalid Port", str(port_err))
+            return
+
         self.is_sending_emails = True
         self.email_start_btn.config(state=tk.DISABLED)
         self.email_stop_btn.config(state=tk.NORMAL)
@@ -3761,7 +3769,7 @@ TOP 10 MOST ENGAGED COMPANIES:
         # thread starts — Tkinter widgets are not thread-safe.
         send_config = {
             "smtp_server": self.smtp_server_var.get(),
-            "smtp_port": int(self.smtp_port_var.get() or 587),
+            "smtp_port": smtp_port,
             "smtp_username": self.smtp_username_var.get(),
             "smtp_password": self.smtp_password_var.get(),
             "smtp_from": self.smtp_from_var.get(),

@@ -100,8 +100,14 @@ def check_for_update() -> dict | None:
         current = _current_version()
         if _parse_version(latest_ver) > _parse_version(current):
             return {"version": latest_ver, "url": release_url}
-    except Exception:
-        pass
+    except Exception as e:
+        import sys as _sys2
+
+        if not getattr(_sys2, "frozen", False):
+            print(
+                f"[DEBUG] update check failed: {type(e).__name__}: {e}",
+                file=_sys2.stderr,
+            )
 
     return None
 

@@ -36,7 +36,9 @@ _CONFIG_FILE = _user_base / "config.yml"
 CSV_PATH = str(_user_base / "data" / "cleaned_master.csv")
 REPORTS_FOLDER = str(_user_base / "reports")
 TEST_MODE = True
-TEST_EMAIL = "cg.verhoef@windesheim.nl"  # <- Change this to your address
+# Default to a safe placeholder; override via env var RESILIENCESCAN_TEST_EMAIL
+# or via config.yml smtp.test_email — never hardcode a real address here.
+TEST_EMAIL = os.environ.get("RESILIENCESCAN_TEST_EMAIL", "test@example.com")
 
 # SMTP defaults (overridden by config.yml if present)
 SMTP_SERVER = "smtp.office365.com"
@@ -221,7 +223,7 @@ def send_emails():
                     msg.attach(part)
 
                 # Send via SMTP
-                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.send_message(msg)
@@ -239,9 +241,18 @@ def send_emails():
             sent_count += 1
             print(f"   [OK] Sent successfully via {'SMTP' if use_smtp else 'Outlook'}")
 
+        except smtplib.SMTPAuthenticationError as e:
+            failed_count += 1
+            print(f"   [FAIL] Authentication error (check username/password): {e}")
+        except smtplib.SMTPException as e:
+            failed_count += 1
+            print(f"   [FAIL] SMTP error: {e}")
+        except OSError as e:
+            failed_count += 1
+            print(f"   [FAIL] Network/connection error: {e}")
         except Exception as e:
             failed_count += 1
-            print(f"   [FAIL] Failed: {e}")
+            print(f"   [FAIL] Unexpected error: {type(e).__name__}: {e}")
 
     print("\n[DONE] Finished!")
     print(f"   Sent: {sent_count}")
