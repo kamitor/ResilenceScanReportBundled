@@ -1,0 +1,430 @@
+---
+title: "SCROL Matrix Report: `r params$company`"
+subtitle: "Supply Chain Resilience Opportunities & Limitations"
+author:
+  - name: Supply Chain Finance Lectoraat
+    affiliations:
+      - name: Hogeschool Windesheim
+        address: Campus 2, Zwolle
+format:
+  pdf:
+    documentclass: article
+    classoption: ["oneside", "fontsize=11pt"]
+    link-citations: false
+    number-sections: false
+    toc: false
+    titlepage: "bg-image"
+    titlepage-bg-image: "img/corner-bg.png"
+    titlepage-logo: "img/logo.png"
+    titlepage-header: "Resilience Scan | NEXT GEN Logistics Initiative"
+    titlepage-footer: |
+      Supply Chain Finance Lectoraat, Hogeschool Windesheim\
+      https://resiliencescan.org/ | https://www.windesheim.com/research/professorships/supply-chain-finance
+    coverpage-include-file:
+      - tex/copyright.tex
+    titlepage-include-file:
+      - tex/dedication.tex
+    titlepage-theme:
+      vrule-color: "004D40"
+      vrule-width: "10pt"
+    coverpage: otter
+    coverpage-bg-image: "img/otter-bar.jpeg"
+    coverpage-title: "resiliencescan"
+    coverpage-author: ["Supply Chain Finance Lectoraat, Hogeschool Windesheim", "NEXT GEN Logistics"]
+    coverpage-theme:
+      title-color: "white"
+      title-fontfamily: "QTDublinIrish.otf"
+      title-fontsize: 70
+      author-style: "plain"
+      author-sep: "newline"
+      author-fontstyle: ["textbf", "textsc"]
+      author-fontsize: 24
+      author-color: "4CAF50"
+      author-align: "right"
+      author-bottom: "1.5in"
+      footer-style: "none"
+      header-style: "none"
+      date-style: "none"
+    keep-tex: false
+    header-includes: |
+      \usepackage{geometry}
+      \usepackage{graphicx}
+      \usepackage{float}
+      \usepackage{array}
+      \usepackage{booktabs}
+      \usepackage{longtable}
+      \usepackage{multirow}
+      \usepackage{colortbl}
+      \usepackage{xcolor}
+      \usepackage{pdflscape}
+      \usepackage{tabu}
+      \usepackage{threeparttable}
+      \usepackage{threeparttablex}
+      \usepackage[normalem]{ulem}
+      \usepackage{makecell}
+      \usepackage{caption}
+      \usepackage{fancyhdr}
+      \usepackage{setspace}
+      \usepackage{hyperref}
+      \usepackage{microtype}
+      \geometry{margin=2.5cm}
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+  freeze: false
+params:
+  company: "Placeholder Company"
+  person: ""
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(fmsb)
+library(scales)
+library(RColorBrewer)
+library(patchwork)
+
+options(scipen = 999, digits = 2)
+knitr::opts_chunk$set(fig.pos = "H", out.extra = "")
+```
+
+```{r load-data, include=FALSE}
+# ── Data loading ────────────────────────────────────────────────────────────
+data_file_path <- "data/cleaned_master.csv"
+
+score_cols <- c(
+  "up__r", "up__c", "up__f", "up__v", "up__a",
+  "in__r", "in__c", "in__f", "in__v", "in__a",
+  "do__r", "do__c", "do__f", "do__v", "do__a"
+)
+
+respondent <- NULL
+data_source <- "synthetic"
+
+if (file.exists(data_file_path)) {
+  tryCatch({
+    df <- readr::read_csv(data_file_path,
+      col_types = readr::cols(.default = "c"),
+      show_col_types = FALSE
+    )
+    df <- df %>% rename_with(~ str_to_lower(str_trim(.)))
+
+    # Match company
+    co_col <- intersect(c("company_name", "company"), colnames(df))[1]
+    if (!is.na(co_col)) {
+      matches <- which(str_to_lower(str_trim(df[[co_col]])) ==
+                       str_to_lower(str_trim(params$company)))
+      if (length(matches) > 0) {
+        # Prefer person match if provided
+        person_target <- if (!is.null(params$person)) str_trim(params$person) else ""
+        if (person_target != "" && "name" %in% colnames(df)) {
+          pm <- which(str_to_lower(str_trim(df$name[matches])) ==
+                      str_to_lower(person_target))
+          if (length(pm) > 0) matches <- matches[pm[1]]
+        }
+        respondent <- df[matches[1], , drop = FALSE]
+        data_source <- "real"
+      }
+    }
+  }, error = function(e) NULL)
+}
+
+# ── Convert score columns to numeric ────────────────────────────────────────
+as_score <- function(x) {
+  v <- suppressWarnings(as.numeric(gsub(",", ".", gsub("[^0-9.,-]", "", as.character(x)))))
+  ifelse(is.na(v), NA_real_, pmax(0, pmin(5, v)))
+}
+
+if (!is.null(respondent)) {
+  for (col in score_cols) {
+    if (col %in% colnames(respondent)) {
+      respondent[[col]] <- as_score(respondent[[col]])
+    } else {
+      respondent[[col]] <- NA_real_
+    }
+  }
+} else {
+  # Synthetic fallback — reproducible seed from company name
+  set.seed(abs(sum(utf8ToInt(params$company))) %% .Machine$integer.max)
+  scores <- pmax(0.5, pmin(4.8, rnorm(15, mean = 3.0, sd = 0.7)))
+  respondent <- as.data.frame(setNames(as.list(scores), score_cols))
+  respondent$company_name <- params$company
+  data_source <- "synthetic"
+}
+
+# ── Pillar scores ────────────────────────────────────────────────────────────
+get_score <- function(col) {
+  v <- respondent[[col]]
+  if (length(v) == 0 || is.na(v)) NA_real_ else as.numeric(v[1])
+}
+
+up_r <- get_score("up__r"); up_c <- get_score("up__c")
+up_f <- get_score("up__f"); up_v <- get_score("up__v"); up_a <- get_score("up__a")
+
+in_r <- get_score("in__r"); in_c <- get_score("in__c")
+in_f <- get_score("in__f"); in_v <- get_score("in__v"); in_a <- get_score("in__a")
+
+do_r <- get_score("do__r"); do_c <- get_score("do__c")
+do_f <- get_score("do__f"); do_v <- get_score("do__v"); do_a <- get_score("do__a")
+
+# Column averages across all three supply chain layers
+avg_r  <- mean(c(up_r, in_r, do_r), na.rm = TRUE)
+avg_c  <- mean(c(up_c, in_c, do_c), na.rm = TRUE)
+avg_f  <- mean(c(up_f, in_f, do_f), na.rm = TRUE)
+avg_v  <- mean(c(up_v, in_v, do_v), na.rm = TRUE)
+avg_a  <- mean(c(up_a, in_a, do_a), na.rm = TRUE)
+
+# Row averages
+up_avg  <- mean(c(up_r, up_c, up_f, up_v, up_a),   na.rm = TRUE)
+in_avg  <- mean(c(in_r, in_c, in_f, in_v, in_a),   na.rm = TRUE)
+do_avg  <- mean(c(do_r, do_c, do_f, do_v, do_a),   na.rm = TRUE)
+all_avg <- mean(c(up_avg, in_avg, do_avg),           na.rm = TRUE)
+
+# ── Colour coding (0-5 scale) ────────────────────────────────────────────────
+score_color <- function(s) {
+  if (is.na(s) || !is.finite(s)) return("D3D3D3")
+  if (s < 2) return("E74C3C")
+  if (s < 3) return("E67E22")
+  if (s < 4) return("F4D03F")
+  return("27AE60")
+}
+
+text_color_is_white <- function(s) {
+  !is.na(s) && is.finite(s) && s < 3
+}
+
+fmt <- function(s) if (is.na(s) || !is.finite(s)) "N/A" else sprintf("%.2f", s)
+
+# Build a LaTeX cell with background colour via \cellcolor[HTML]{}
+colored_cell <- function(s) {
+  bg  <- score_color(s)
+  val <- fmt(s)
+  if (text_color_is_white(s)) {
+    paste0("\\cellcolor[HTML]{", bg, "}\\textcolor{white}{", val, "}")
+  } else {
+    paste0("\\cellcolor[HTML]{", bg, "}", val)
+  }
+}
+```
+
+# SCROL Matrix — `r params$company`
+
+**Respondent:** `r if (!is.null(params$person) && nzchar(params$person)) params$person else "—"`
+**Data source:** `r if (data_source == "real") "Survey data" else "Synthetic (company not found in dataset)"`
+
+The **Supply Chain Resilience Opportunities & Limitations (SCROL)** matrix maps resilience
+capability scores across five dimensions and three supply chain layers. Scores range from
+**0** (absent) to **5** (excellent).
+
+```{r colour-legend, results='asis'}
+legend_df <- data.frame(
+  Level     = c("< 2.0", "2.0 – 2.99", "3.0 – 3.99", "≥ 4.0"),
+  Meaning   = c("Critical — immediate attention required",
+                "Below average — improvement needed",
+                "Average — further development recommended",
+                "Strong — maintain and leverage")
+)
+legend_df %>%
+  kable(booktabs = TRUE, col.names = c("Score range", "Interpretation"),
+        caption = "SCROL colour legend") %>%
+  kable_styling(latex_options = c("hold_position"), full_width = FALSE) %>%
+  row_spec(1, background = "#E74C3C", color = "white") %>%
+  row_spec(2, background = "#E67E22", color = "white") %>%
+  row_spec(3, background = "#F4D03F") %>%
+  row_spec(4, background = "#27AE60")
+```
+
+\vspace{0.5em}
+
+```{r scrol-matrix, results='asis'}
+# Write the matrix as raw LaTeX — kable mangles \cellcolor even with escape=FALSE
+lc <- function(s, bold = FALSE) {
+  bg  <- score_color(s)
+  val <- fmt(s)
+  inner <- if (bold) paste0("\\textbf{", val, "}") else val
+  if (text_color_is_white(s)) {
+    paste0("\\cellcolor[HTML]{", bg, "}\\textcolor{white}{", inner, "}")
+  } else {
+    paste0("\\cellcolor[HTML]{", bg, "}{", inner, "}")
+  }
+}
+hc <- function(txt) paste0("\\textcolor{white}{\\textbf{", txt, "}}")
+
+co <- gsub("[&%$#_{}^~\\\\]", " ", params$company)  # sanitise for LaTeX caption
+
+cat("\\begin{table}[H]\n")
+cat("\\centering\n")
+cat("\\small\n")
+cat(paste0("\\caption{SCROL Matrix -- ", co, "}\n"))
+cat("\\begin{tabular}{lcccccc}\n")
+cat("\\hline\n")
+cat(paste0(
+  "\\rowcolor[HTML]{2C3E50} ",
+  paste(sapply(c("Layer","Redundancy","Collaboration","Flexibility","Visibility","Agility","Row Avg"), hc),
+        collapse = " & "),
+  " \\\\\n"
+))
+cat("\\hline\n")
+
+rows_data <- list(
+  list("\\textbf{Overall}",  avg_r, avg_c, avg_f, avg_v, avg_a, all_avg),
+  list("Upstream",           up_r,  up_c,  up_f,  up_v,  up_a,  up_avg),
+  list("Internal",           in_r,  in_c,  in_f,  in_v,  in_a,  in_avg),
+  list("Downstream",         do_r,  do_c,  do_f,  do_v,  do_a,  do_avg)
+)
+
+for (r in rows_data) {
+  cells <- paste(sapply(r[-1], lc), collapse = " & ")
+  cat(paste0(r[[1]], " & ", cells, " \\\\\n"))
+}
+
+cat("\\hline\n")
+cat("\\end{tabular}\n")
+cat("\\end{table}\n")
+```
+
+\vspace{1em}
+
+# Radar Charts by Supply Chain Layer
+
+```{r radar-charts, fig.width=7, fig.height=8, fig.cap="Resilience radar charts per supply chain layer (scale 0–5)"}
+# fmsb radar: first two rows are max and min
+# Short labels for radar charts (fmsb clips long strings)
+dims        <- c("Redundancy", "Collaboration", "Flexibility", "Visibility", "Agility")
+dims_short  <- c("Redundancy", "Collab.", "Flexibility", "Visibility", "Agility")
+
+make_radar <- function(scores, title, fill_col) {
+  df_radar <- rbind(
+    rep(5, 5),   # max
+    rep(0, 5),   # min
+    scores
+  )
+  df_radar <- as.data.frame(df_radar)
+  colnames(df_radar) <- dims_short
+
+  op <- par(mar = c(1, 1, 2, 1))
+  fmsb::radarchart(
+    df_radar,
+    axistype  = 1,
+    pcol      = fill_col,
+    pfcol     = scales::alpha(fill_col, 0.25),
+    plwd      = 2,
+    cglcol    = "grey70",
+    cglty     = 1,
+    axislabcol = "grey50",
+    caxislabels = c("0", "1", "2", "3", "4", "5"),
+    vlcex     = 0.85,
+    title     = title
+  )
+  par(op)
+}
+
+layout(matrix(c(1, 2, 3, 4), nrow = 2, byrow = TRUE))
+
+make_radar(c(avg_r, avg_c, avg_f, avg_v, avg_a), "Supply Chain Overall", "#2C3E50")
+make_radar(c(up_r,  up_c,  up_f,  up_v,  up_a),  "Upstream",             "#2980B9")
+make_radar(c(in_r,  in_c,  in_f,  in_v,  in_a),  "Internal",             "#8E44AD")
+make_radar(c(do_r,  do_c,  do_f,  do_v,  do_a),  "Downstream",           "#27AE60")
+```
+
+\newpage
+
+# Score Summary
+
+```{r bar-chart, fig.width=6.5, fig.height=4, fig.cap="Resilience scores by supply chain layer and dimension"}
+bar_data <- data.frame(
+  Layer = rep(c("Upstream", "Internal", "Downstream"), each = 5),
+  Dimension = rep(dims, 3),
+  Score = c(up_r, up_c, up_f, up_v, up_a,
+            in_r, in_c, in_f, in_v, in_a,
+            do_r, do_c, do_f, do_v, do_a)
+) %>%
+  mutate(
+    Layer = factor(Layer, levels = c("Upstream", "Internal", "Downstream")),
+    Dimension = factor(Dimension, levels = dims),
+    Band = case_when(
+      is.na(Score) ~ "N/A",
+      Score < 2    ~ "Critical (< 2)",
+      Score < 3    ~ "Below average (2–3)",
+      Score < 4    ~ "Average (3–4)",
+      TRUE         ~ "Strong (≥ 4)"
+    ),
+    Band = factor(Band, levels = c("Critical (< 2)", "Below average (2–3)",
+                                   "Average (3–4)", "Strong (≥ 4)", "N/A"))
+  )
+
+band_colors <- c(
+  "Critical (< 2)"       = "#E74C3C",
+  "Below average (2–3)"  = "#E67E22",
+  "Average (3–4)"        = "#F4D03F",
+  "Strong (≥ 4)"         = "#27AE60",
+  "N/A"                  = "#D3D3D3"
+)
+
+ggplot(bar_data, aes(x = Dimension, y = Score, fill = Band)) +
+  geom_col(width = 0.7, na.rm = TRUE) +
+  geom_hline(yintercept = c(2, 3, 4), linetype = "dashed",
+             color = "grey60", linewidth = 0.4) +
+  scale_fill_manual(values = band_colors, drop = FALSE) +
+  scale_y_continuous(limits = c(0, 5), breaks = 0:5) +
+  facet_wrap(~ Layer, nrow = 1) +
+  labs(x = NULL, y = "Score (0–5)", fill = "Performance band") +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x  = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom",
+    legend.title = element_text(size = 8),
+    strip.text   = element_text(face = "bold")
+  )
+```
+
+```{r summary-table, results='asis'}
+# Row averages with interpretation
+interp <- function(s) {
+  if (is.na(s) || !is.finite(s)) return("N/A")
+  if (s < 2) return("Critical")
+  if (s < 3) return("Below average")
+  if (s < 4) return("Average")
+  return("Strong")
+}
+
+summary_df <- data.frame(
+  Layer          = c("Supply Chain Overall", "Upstream", "Internal", "Downstream"),
+  `Average Score` = c(fmt(all_avg), fmt(up_avg), fmt(in_avg), fmt(do_avg)),
+  Interpretation = c(interp(all_avg), interp(up_avg), interp(in_avg), interp(do_avg)),
+  check.names    = FALSE
+)
+
+summary_df %>%
+  kable(booktabs = TRUE, align = c("l", "c", "l"),
+        caption = "Layer averages and interpretation") %>%
+  kable_styling(latex_options = c("hold_position"), full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, background = "#2C3E50", color = "white") %>%
+  row_spec(1, bold = TRUE)
+```
+
+# Interpretation Guide
+
+| Capability | Description |
+|---|---|
+| **Redundancy** | Backup capacity, buffer stock, and alternative sourcing |
+| **Collaboration** | Information sharing and joint planning with supply chain partners |
+| **Flexibility** | Ability to adapt volumes, products, and suppliers rapidly |
+| **Visibility** | Real-time insight into supply chain status and risks |
+| **Agility** | Speed of response to disruptions and market changes |
+
+: SCROL capability definitions
+
+\vspace{0.5em}
+
+*This report was generated by the ResilienceScan platform, Supply Chain Finance Lectoraat,
+Hogeschool Windesheim. Scores are derived from validated survey responses and represent
+the respondent's self-assessed supply chain resilience profile.*

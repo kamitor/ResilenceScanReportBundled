@@ -103,6 +103,8 @@ def _sync_template() -> None:
     src = _asset_root()
     dst = _data_root()
     dst.mkdir(parents=True, exist_ok=True)
+
+    # Determine whether any QMD needs updating (use ResilienceReport as the sentinel)
     src_qmd = src / "ResilienceReport.qmd"
     dst_qmd = dst / "ResilienceReport.qmd"
     if (
@@ -111,7 +113,14 @@ def _sync_template() -> None:
         and src_qmd.stat().st_mtime <= dst_qmd.stat().st_mtime
     ):
         return  # already up-to-date
-    for name in ("ResilienceReport.qmd", "references.bib", "QTDublinIrish.otf"):
+
+    # Copy all QMDs and shared assets
+    for name in (
+        "ResilienceReport.qmd",
+        "SCROLReport.qmd",
+        "references.bib",
+        "QTDublinIrish.otf",
+    ):
         s = src / name
         if s.exists():
             shutil.copy2(str(s), str(dst / name))
@@ -639,16 +648,7 @@ class ResilienceScanGUI:
             textvariable=self.template_var,
             values=[
                 "ResilienceReport.qmd",
-                "ResilienceReport_v2.qmd",
-                "ExecutiveDashboard.qmd",
-                "report_variations/Report1_CircularBarplot.qmd",
-                "report_variations/Report2_Heatmap.qmd",
-                "report_variations/Report3_Treemap.qmd",
-                "report_variations/Report4_ViolinPlot.qmd",
-                "report_variations/Report5_NetworkDiagram.qmd",
-                "report_variations/Report6_RidgelinePlot.qmd",
-                "report_variations/Report7_LollipopChart.qmd",
-                "report_variations/Report8_SankeyDiagram.qmd",
+                "SCROLReport.qmd",
             ],
             width=45,
         )
