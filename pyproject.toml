@@ -1,6 +1,6 @@
 [project]
 name = "ResilenceScanReportBuilder"
-version = "0.21.28"
+version = "0.21.29"
 description = "Desktop app for generating personalised ResilienceScan PDF reports using Quarto, R, and TinyTeX"
 requires-python = ">=3.11"
 

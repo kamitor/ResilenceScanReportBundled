@@ -1407,16 +1407,20 @@ class ResilienceScanGUI:
             messagebox.showerror("Error", f"Failed to load data:\n{e}")
 
     def load_data_file(self):
-        """Browse and load a data file (.xlsx, .xls, or .csv).
+        """Browse and load a data file (xlsx, xls, ods, xml, csv, tsv).
 
-        If an Excel file is selected it is copied into the data directory and
-        converted to cleaned_master.csv automatically before loading.
+        For any file other than cleaned_master.csv itself, the file is copied
+        into the data directory and converted via convert_and_save() before
+        loading.
         """
         filename = filedialog.askopenfilename(
             title="Select Data File",
             filetypes=[
+                ("All supported formats", "*.xlsx *.xls *.ods *.xml *.csv *.tsv"),
                 ("Excel files", "*.xlsx *.xls"),
-                ("CSV files", "*.csv"),
+                ("OpenDocument Spreadsheet", "*.ods"),
+                ("XML files", "*.xml"),
+                ("CSV / TSV files", "*.csv *.tsv"),
                 ("All files", "*.*"),
             ],
             initialdir=_DATA_ROOT / "data",
@@ -1427,30 +1431,31 @@ class ResilienceScanGUI:
 
         path = Path(filename)
         try:
-            if path.suffix.lower() in (".xlsx", ".xls"):
-                # Copy into the data dir so convert_data can find it, then convert
-                import convert_data
-                import shutil as _shutil
+            import convert_data as _cd
+            import shutil as _shutil
 
-                dest_dir = _DATA_ROOT / "data"
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                dest = dest_dir / path.name
-                if dest != path:
+            dest_dir = _DATA_ROOT / "data"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / path.name
+
+            if path.resolve() == DATA_FILE.resolve():
+                # User selected cleaned_master.csv itself — load directly
+                csv_path = path
+            else:
+                if dest.resolve() != path.resolve():
                     _shutil.copy2(str(path), str(dest))
-                self.log(f"[INFO] Excel file copied to data dir: {dest.name}")
-                self.log("[INFO] Converting Excel → CSV …")
-
-                ok = convert_data.convert_and_save()
+                    self.log(f"[INFO] File copied to data dir: {dest.name}")
+                fmt = path.suffix.upper().lstrip(".")
+                self.log(f"[INFO] Converting {fmt} → CSV …")
+                ok = _cd.convert_and_save(dest)
                 if not ok:
                     messagebox.showerror(
                         "Conversion Failed",
-                        "Could not convert the Excel file.\nCheck the log for details.",
+                        f"Could not convert {dest.name}.\nCheck the log for details.",
                     )
                     return
                 self.log("[OK] Conversion complete — loading cleaned_master.csv")
                 csv_path = DATA_FILE
-            else:
-                csv_path = path
 
             self.df = pd.read_csv(csv_path)
             self.df.columns = self.df.columns.str.lower().str.strip()

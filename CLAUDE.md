@@ -350,3 +350,87 @@ Three bugs caused emails to silently fail and stay "pending":
 ## Next milestones
 
 *Re-test email sending on Windows — confirm emails send, log shows progress, status updates to sent/failed.*
+
+---
+
+### ✅ M22 — R installer hardening + multi-format import (v0.21.28)
+
+**R installer hardening (Windows + Linux):**
+- Version comparison bug: unknown installed version was treated as "OK to skip" → now forces reinstall.
+- Stale `r-library` cleanup: when R was upgraded, old binary packages would silently fail to load (ABI mismatch). Both setup scripts now wipe `r-library` when `R_UPGRADED=true`.
+- R library writable check: added write-test before `install.packages()`; logs clear `ERROR` if not writable instead of silent partial install.
+- Windows: `icacls` grants `SYSTEM:F`, `Administrators:F`, `Users:RX` on `r-library`.
+- Linux: `chmod -R u+w` + `chown -R root:root` fallback; `chmod -R a+rX` after install.
+
+**Multi-format data import:**
+- `convert_data.py` extended to accept `.xlsx`, `.xls`, `.ods`, `.xml`, `.tsv`, `.csv` (raw survey exports).
+- All formats normalise to `data/cleaned_master.csv` via the same column-mapping logic.
+- `app/main.py` file picker updated to show all supported extensions.
+- `requirements.txt`: added `odfpy>=1.4.1` for ODS support.
+- `tests/test_convert_formats.py` (10 new tests): extension constant, dispatcher, XML strategies, CSV with header offset, `convert_and_save` with explicit path, `_find_source_file`.
+
+**Gate:** ✅ 132 tests pass; ruff clean.
+
+---
+
+### ⏳ M23 — SCROL matrix report template (v0.22.0)
+
+Second Quarto template based on the Supply Chain Resilience Opportunities & Limitations (SCROL) matrix from `Resilience - Dashboard V3.5.xlsm`.
+
+**DO NOT modify `ResilienceReport.qmd`.**
+
+**Template structure (`SCROLReport.qmd`):**
+- Same params as `ResilienceReport.qmd` (`company`, `person`, `data_file`).
+- SCROL matrix table: rows = Supply Chain (overall avg), Upstream, Downstream, Internal/Process, Internal/Product; columns = Redundancy (R), Collaboration (C), Flexibility (F), Visibility (V), Agility (A) + Row avg.
+- Column mapping: `up__r/c/f/v/a`, `do__r/c/f/v/a`, `in__r/c/f/v/a` (all on 0-5 scale).
+- Colour-coded cells: red (<2), orange (2-3), yellow (3-4), green (≥4).
+- Spider/radar chart per dimension.
+- Sector benchmarking where data is available in the CSV.
+
+**App wiring:**
+- Template dropdown in the app shows `ResilienceReport.qmd` and `SCROLReport.qmd`.
+- `_sync_template()` copies both QMD files + shared assets on startup.
+- Generate single / generate all use whichever template is selected.
+
+**Gate:** App generates correct SCROL PDF for a sample row; original ResilienceReport.qmd unmodified.
+
+---
+
+### ⏳ M24 — Independent code analysis (REVIEW.md)
+
+Thorough, independent review of the entire codebase documented in `REVIEW.md`.
+
+**Scope:**
+- Dead code: functions defined but never called; UI buttons wired to stubs.
+- Unused imports and variables.
+- Security issues: command injection, path traversal, hardcoded credentials.
+- Thread-safety issues: any remaining direct widget access from non-main threads.
+- Frozen-app path correctness: any residual `ROOT_DIR` / `sys._MEIPASS` / `_internal/` misuse.
+- Data-flow gaps: CSV columns read but never validated; error paths that swallow exceptions.
+- Code duplication: copy-pasted blocks that could share a helper.
+- Test coverage gaps.
+
+**Gate:** `REVIEW.md` committed; no new bugs introduced.
+
+---
+
+### ⏳ M25 — Dead-code cleanup
+
+Remove all stubs, fake buttons, and unreachable code identified in M24.
+
+**Rule:** Only delete code confirmed dead in M24 review — no refactoring, no feature changes.
+
+**Gate:** All 132+ tests still pass; ruff clean; no functionality regression.
+
+---
+
+### ⏳ M26 — Refactor
+
+Structured refactor of `app/main.py` (currently ~3750 lines, all in one class).
+
+**Scope:**
+- Extract logical sections into separate modules: `gui_generate.py`, `gui_email.py`, `gui_settings.py`.
+- Replace copy-pasted path/env-building blocks with shared helpers.
+- No behaviour changes — tests must pass unchanged.
+
+**Gate:** All tests pass; ruff clean; app starts and all features work on both platforms.
