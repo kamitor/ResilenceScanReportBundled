@@ -1,9 +1,12 @@
 import subprocess
-import pandas as pd
 import csv
-from pathlib import Path
 import shutil
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
+from utils.filename_utils import safe_display_name, safe_filename
 
 # [OK] CONFIGURATION
 ROOT = Path(__file__).resolve().parent
@@ -33,48 +36,18 @@ def load_csv(path):
                     print(f"[OK] Delimiter '{sep}' with encoding '{enc}'")
                 except Exception:
                     sep = ","
-                    print(
-                        f"[WARNING] Using fallback delimiter ',' with encoding '{enc}'"
-                    )
+                    print(f"[WARN] Using fallback delimiter ',' with encoding '{enc}'")
                 return pd.read_csv(path, encoding=enc, sep=sep)
         except Exception as e:
-            print(f"[WARNING] Failed with encoding {enc}: {e}")
+            print(f"[WARN] Failed with encoding {enc}: {e}")
     raise RuntimeError("[ERROR] Could not read CSV.")
-
-
-def safe_filename(name):
-    """Convert string to safe filename (alphanumeric + underscore)"""
-    if pd.isna(name) or name == "":
-        return "Unknown"
-    return "".join(
-        c if c.isalnum() or c in [" ", "-"] else "_" for c in str(name)
-    ).replace(" ", "_")
-
-
-def safe_display_name(name):
-    """Sanitize name for display in filename (keep spaces and hyphens, replace slashes)"""
-    if pd.isna(name) or name == "":
-        return "Unknown"
-    # Replace forward slash with dash, keep other safe characters
-    name_str = str(name).strip()
-    # Replace problematic characters but keep it readable
-    name_str = name_str.replace("/", "-")
-    name_str = name_str.replace("\\", "-")
-    name_str = name_str.replace(":", "-")
-    name_str = name_str.replace("*", "")
-    name_str = name_str.replace("?", "")
-    name_str = name_str.replace('"', "'")
-    name_str = name_str.replace("<", "(")
-    name_str = name_str.replace(">", ")")
-    name_str = name_str.replace("|", "-")
-    return name_str
 
 
 def generate_reports():
     """Generate individual PDF reports for each person/company entry"""
 
     print("=" * 70)
-    print("[DATA] RESILIENCE SCAN REPORT GENERATOR")
+    print("[INFO] RESILIENCE SCAN REPORT GENERATOR")
     print("=" * 70)
 
     # Load data
@@ -88,7 +61,7 @@ def generate_reports():
     if not company_col:
         raise ValueError(f"[ERROR] No column matching '{COLUMN_MATCH_COMPANY}'")
 
-    print("\n[FOLDER] Found columns:")
+    print("\n[INFO] Found columns:")
     print(f"   Company: {company_col}")
     print(f"   Person: {person_col if person_col else 'Not found (will use Unknown)'}")
 
@@ -184,7 +157,7 @@ def generate_reports():
                         else ""
                     )
                     print(
-                        f"   [WARNING]  stderr: {result.stderr[-500:]}"
+                        f"   [WARN]  stderr: {result.stderr[-500:]}"
                         if result.stderr
                         else ""
                     )
@@ -223,12 +196,12 @@ def generate_reports():
 
     # Summary
     print("\n" + "=" * 70)
-    print("[DATA] GENERATION SUMMARY")
+    print("[INFO] GENERATION SUMMARY")
     print("=" * 70)
     print(f"   [OK] Generated: {generated}")
     print(f"   [SKIP] Skipped:   {skipped}")
     print(f"   [ERROR] Failed:    {failed}")
-    print(f"   [FOLDER] Total:     {total_entries}")
+    print(f"   [INFO] Total:     {total_entries}")
     print("=" * 70)
 
     if generated > 0:

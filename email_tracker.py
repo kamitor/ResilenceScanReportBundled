@@ -13,21 +13,11 @@ Called by the GUI via:
 """
 
 import json
-import os
-import sys
 from datetime import datetime
-from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Path resolution — same strategy as clean_data.py
-# ---------------------------------------------------------------------------
-if getattr(sys, "frozen", False):
-    if sys.platform == "win32":
-        _user_base = Path(os.environ.get("APPDATA", Path.home())) / "ResilienceScan"
-    else:
-        _user_base = Path.home() / ".local" / "share" / "resiliencescan"
-else:
-    _user_base = Path(__file__).resolve().parent
+from utils.path_utils import get_user_base_dir
+
+_user_base = get_user_base_dir()
 
 _DATA_DIR = _user_base / "data"
 _TRACKER_FILE = _DATA_DIR / "email_tracker.json"

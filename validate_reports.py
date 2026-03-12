@@ -6,23 +6,14 @@ from each filename, then delegates per-report validation to
 validate_single_report.validate_report().  No external JSON file required.
 """
 
-import os
 import re
-import sys
 from pathlib import Path
 
 from validate_single_report import validate_report
 
-# ---------------------------------------------------------------------------
-# Path resolution — same strategy as clean_data.py
-# ---------------------------------------------------------------------------
-if getattr(sys, "frozen", False):
-    if sys.platform == "win32":
-        _user_base = Path(os.environ.get("APPDATA", Path.home())) / "ResilienceScan"
-    else:
-        _user_base = Path.home() / ".local" / "share" / "resiliencescan"
-else:
-    _user_base = Path(__file__).resolve().parent
+from utils.path_utils import get_user_base_dir
+
+_user_base = get_user_base_dir()
 
 DATA_FILE = _user_base / "data" / "cleaned_master.csv"
 REPORTS_DIR = _user_base / "reports"
@@ -60,7 +51,7 @@ def validate_all(
       {"total": int, "passed": int, "failed": int, "errors": int, "pass_rate": float}
     """
     print("=" * 70)
-    print("PDF REPORT VALIDATION")
+    print("[INFO] PDF REPORT VALIDATION")
     print("=" * 70)
 
     empty = {"total": 0, "passed": 0, "failed": 0, "errors": 0, "pass_rate": 0.0}
@@ -130,7 +121,7 @@ def validate_all(
     pass_rate = (passed / (passed + failed) * 100) if (passed + failed) > 0 else 0.0
 
     print("\n" + "=" * 70)
-    print("VALIDATION SUMMARY")
+    print("[INFO] VALIDATION SUMMARY")
     print("=" * 70)
     print(f"   Total PDFs:  {total}")
     print(f"   Passed:      {passed}")
@@ -139,9 +130,9 @@ def validate_all(
     print(f"   Pass rate:   {pass_rate:.1f}%  (of parseable reports)")
 
     if pass_rate >= 90.0:
-        print("\n   [SUCCESS] Gate passed -- pass rate >= 90%")
+        print("\n   [OK] Gate passed -- pass rate >= 90%")
     else:
-        print("\n   [ATTENTION] Gate not met -- pass rate < 90%")
+        print("\n   [WARN] Gate not met -- pass rate < 90%")
     print("=" * 70)
 
     return {

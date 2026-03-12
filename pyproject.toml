@@ -1,6 +1,6 @@
 [project]
 name = "ResilenceScanReportBuilder"
-version = "0.21.32"
+version = "0.21.36"
 description = "Desktop app for generating personalised ResilienceScan PDF reports using Quarto, R, and TinyTeX"
 requires-python = ">=3.11"
 
@@ -19,8 +19,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Large legacy GUI file — suppress all pre-existing style warnings
-"app/main.py" = ["E", "W", "F", "UP", "B"]
 # Legacy pipeline scripts — suppress non-critical pre-existing issues
 "clean_data.py"             = ["E722", "F841", "B007"]
 "clean_data_enhanced.py"    = ["E722", "F841", "B007"]

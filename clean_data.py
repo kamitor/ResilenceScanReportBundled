@@ -6,7 +6,6 @@ Also runnable standalone: python clean_data.py
 """
 
 import json
-import os
 import shutil
 import sys
 from datetime import datetime
@@ -15,18 +14,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Path resolution — works in development (repo root) and frozen PyInstaller
-# ---------------------------------------------------------------------------
-if getattr(sys, "frozen", False):
-    # Frozen: user-writable data lives outside the read-only bundle
-    if sys.platform == "win32":
-        _user_base = Path(os.environ.get("APPDATA", Path.home())) / "ResilienceScan"
-    else:
-        _user_base = Path.home() / ".local" / "share" / "resiliencescan"
-else:
-    # Development: data/ sits at repo root alongside this script
-    _user_base = Path(__file__).resolve().parent
+from utils.constants import REQUIRED_COLUMNS, SCORE_COLUMNS
+from utils.path_utils import get_user_base_dir
+
+_user_base = get_user_base_dir()
 
 DATA_DIR = _user_base / "data"
 INPUT_PATH = DATA_DIR / "cleaned_master.csv"
@@ -34,28 +25,6 @@ BACKUP_DIR = DATA_DIR / "backups"
 VALIDATION_LOG = DATA_DIR / "cleaning_validation_log.json"
 CLEANING_REPORT = DATA_DIR / "cleaning_report.txt"
 REPLACEMENT_LOG = DATA_DIR / "value_replacements_log.csv"
-
-# ---------------------------------------------------------------------------
-# Column definitions
-# ---------------------------------------------------------------------------
-REQUIRED_COLUMNS = ["company_name", "name", "email_address"]
-SCORE_COLUMNS = [
-    "up__r",
-    "up__c",
-    "up__f",
-    "up__v",
-    "up__a",
-    "in__r",
-    "in__c",
-    "in__f",
-    "in__v",
-    "in__a",
-    "do__r",
-    "do__c",
-    "do__f",
-    "do__v",
-    "do__a",
-]
 
 
 class DataCleaningValidator:
@@ -116,7 +85,7 @@ class DataCleaningValidator:
     def validate_columns(self, df):
         """Validate that required columns exist."""
         print("\n" + "=" * 70)
-        print("COLUMN VALIDATION")
+        print("[INFO] COLUMN VALIDATION")
         print("=" * 70)
 
         df_cols_lower = [col.lower() for col in df.columns]
@@ -139,7 +108,7 @@ class DataCleaningValidator:
     def validate_record_completeness(self, df):
         """Check each record for sufficient data to generate a report."""
         print("\n" + "=" * 70)
-        print("RECORD COMPLETENESS VALIDATION")
+        print("[INFO] RECORD COMPLETENESS VALIDATION")
         print("=" * 70)
 
         records_to_keep = []
@@ -233,7 +202,7 @@ class DataCleaningValidator:
     def clean_score_columns(self, df):
         """Clean and convert score columns to numeric with detailed logging."""
         print("\n" + "=" * 70)
-        print("SCORE COLUMN CLEANING")
+        print("[INFO] SCORE COLUMN CLEANING")
         print("=" * 70)
 
         total_replacements = 0
@@ -309,7 +278,7 @@ class DataCleaningValidator:
     def remove_duplicates(self, df):
         """Remove duplicate records."""
         print("\n" + "=" * 70)
-        print("DUPLICATE DETECTION")
+        print("[INFO] DUPLICATE DETECTION")
         print("=" * 70)
 
         duplicates = df.duplicated(
@@ -345,7 +314,7 @@ class DataCleaningValidator:
                 "info": self.info,
                 "removed_records": self.removed_records,
             }
-            with open(VALIDATION_LOG, "w") as f:
+            with open(VALIDATION_LOG, "w", encoding="utf-8") as f:
                 json.dump(log_data, f, indent=2)
             self.log_issue("INFO", f"Validation log saved: {VALIDATION_LOG}")
         except Exception as e:
@@ -407,7 +376,7 @@ class DataCleaningValidator:
         report_text = "\n".join(lines)
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
-            with open(CLEANING_REPORT, "w") as f:
+            with open(CLEANING_REPORT, "w", encoding="utf-8") as f:
                 f.write(report_text)
             print("\n" + report_text)
             self.log_issue("INFO", f"Cleaning report saved: {CLEANING_REPORT}")
@@ -548,5 +517,6 @@ if __name__ == "__main__":
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
     success, summary = clean_and_fix()
-    print(f"\n{'SUCCESS' if success else 'FAILED'}: {summary}")
+    level = "[OK]" if success else "[ERROR]"
+    print(f"\n{level} {summary}")
     sys.exit(0 if success else 1)

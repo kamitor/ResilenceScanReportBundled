@@ -61,7 +61,7 @@ class DataIntegrityValidator:
     def find_excel_file(self):
         """Find the source Excel file"""
         print("\n" + "=" * 70)
-        print("FINDING SOURCE EXCEL FILE")
+        print("[INFO] FINDING SOURCE EXCEL FILE")
         print("=" * 70)
 
         # Check if data directory exists
@@ -93,7 +93,7 @@ class DataIntegrityValidator:
     def load_excel_data(self, excel_path):
         """Load data from Excel file"""
         print("\n" + "=" * 70)
-        print("LOADING EXCEL DATA")
+        print("[INFO] LOADING EXCEL DATA")
         print("=" * 70)
 
         try:
@@ -166,7 +166,7 @@ class DataIntegrityValidator:
     def load_csv_data(self):
         """Load cleaned CSV data"""
         print("\n" + "=" * 70)
-        print("LOADING CLEANED CSV")
+        print("[INFO] LOADING CLEANED CSV")
         print("=" * 70)
 
         if not Path(CLEANED_CSV).exists():
@@ -465,7 +465,7 @@ class DataIntegrityValidator:
             output_dir = Path(REPORT_OUTPUT).parent
             os.makedirs(output_dir, exist_ok=True)
 
-            with open(REPORT_OUTPUT, "w") as f:
+            with open(REPORT_OUTPUT, "w", encoding="utf-8") as f:
                 f.write(report_text)
 
             self.log("INFO", f"Report saved: {REPORT_OUTPUT}")
@@ -492,7 +492,7 @@ class DataIntegrityValidator:
             output_dir = Path(VALIDATION_OUTPUT).parent
             os.makedirs(output_dir, exist_ok=True)
 
-            with open(VALIDATION_OUTPUT, "w") as f:
+            with open(VALIDATION_OUTPUT, "w", encoding="utf-8") as f:
                 json.dump(log_data, f, indent=2)
 
             self.log("INFO", f"Validation log saved: {VALIDATION_OUTPUT}")
@@ -506,8 +506,8 @@ class DataIntegrityValidator:
 def main(num_samples=10):
     """Main validation function"""
     print("=" * 70)
-    print("DATA INTEGRITY VALIDATOR")
-    print("Validates that cleaning process preserves data accurately")
+    print("[INFO] DATA INTEGRITY VALIDATOR")
+    print("[INFO] Validates that cleaning process preserves data accurately")
     print("=" * 70)
 
     validator = DataIntegrityValidator()
@@ -515,18 +515,18 @@ def main(num_samples=10):
     # Find and load Excel file
     excel_file = validator.find_excel_file()
     if not excel_file:
-        print("\n[FAILED] Cannot proceed without Excel file")
+        print("\n[ERROR] Cannot proceed without Excel file")
         return False
 
     excel_df = validator.load_excel_data(excel_file)
     if excel_df is None:
-        print("\n[FAILED] Cannot load Excel data")
+        print("\n[ERROR] Cannot load Excel data")
         return False
 
     # Load CSV file
     csv_df = validator.load_csv_data()
     if csv_df is None:
-        print("\n[FAILED] Cannot load CSV data")
+        print("\n[ERROR] Cannot load CSV data")
         return False
 
     # Validate samples
@@ -537,10 +537,10 @@ def main(num_samples=10):
     validator.save_validation_log()
 
     print("\n" + "=" * 70)
-    print("[COMPLETE] Data integrity validation finished")
+    print("[OK] Data integrity validation finished")
     print("=" * 70)
-    print(f"[REPORT] Text report: {REPORT_OUTPUT}")
-    print(f"[LOG] JSON log: {VALIDATION_OUTPUT}")
+    print(f"[INFO] Text report: {REPORT_OUTPUT}")
+    print(f"[INFO] JSON log: {VALIDATION_OUTPUT}")
     print("=" * 70)
 
     return True

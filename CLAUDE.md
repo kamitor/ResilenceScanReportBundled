@@ -151,36 +151,23 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 | M21 | Fix email sending (thread-safe logging, send_config dict, except handler, tracker display) | v0.21.27 |
 | M22 | R installer hardening + multi-format import (ODS/XML/CSV/TSV) | v0.21.28–v0.21.29 |
 | M24 | Independent code analysis → `REVIEW.md` (27 findings) | v0.21.29 |
+| M23 | SCROL matrix report template (`SCROLReport.qmd`); template dropdown; `_sync_template()` copies both QMDs | v0.21.30 |
+| M25 | Thread-safety: `threading.Event` cancel, `threading.Lock` proc guard, all widget updates via `root.after(0,…)` | v0.21.31 |
+| M26 | Frozen-app path fixes: `view_cleaning_report` uses `_DATA_ROOT`; `generate_executive_dashboard` removed (M27) | v0.21.31 |
+| M27 | Dead-code removal: `generate_executive_dashboard()` + toolbar button deleted | v0.21.31 |
+| M28 | Error handling: specific SMTP exceptions, SMTP port validation, temp PDF `finally` cleanup, debug logging in update_checker | v0.21.31 |
+| M29 | Security: `TEST_EMAIL` → `test@example.com` default (env var override); SMTP timeout=30 | v0.21.31 |
+| M30 | Extract shared utilities: `utils/path_utils`, `utils/filename_utils`, `utils/constants`; wire into 6 files | v0.21.32 |
+| M31 | Test coverage: `test_frozen_paths.py` (6), `test_csv_validation.py` (11), `test_shared_utils.py` (26), `test_email_send.py` (13), `test_thread_safety.py` (13) | v0.21.33 |
+| M32 | Refactor `app/main.py` → 224 lines; 5 mixin modules (`gui_data`, `gui_generate`, `gui_email`, `gui_settings`, `gui_logs`); ruff suppression removed | v0.21.34 |
 
-**Current version: v0.21.29 — 132 tests, ruff clean**
+**Current version: v0.21.34 — 201 tests, ruff clean**
 
 ---
 
 ## Active milestones
 
-### ⏳ M23 — SCROL matrix report template (v0.22.0)
-
-Second Quarto template based on the Supply Chain Resilience Opportunities & Limitations (SCROL) matrix (`Resilience - Dashboard V3.5.xlsm`).
-
-**DO NOT modify `ResilienceReport.qmd`.**
-
-**Template (`SCROLReport.qmd`):**
-- Same params: `company`, `person`, `data_file`.
-- SCROL matrix table — rows: Supply Chain overall, Upstream, Downstream, Process (Internal), Product (Internal); columns: Redundancy, Collaboration, Flexibility, Visibility, Agility + Row avg.
-- Column mapping: `up__r/c/f/v/a`, `do__r/c/f/v/a`, `in__r/c/f/v/a` (0–5 scale).
-- Colour-coded cells: red (<2), orange (2–3), yellow (3–4), green (≥4).
-- Radar/spider chart per supply chain dimension.
-
-**App wiring:**
-- Template dropdown exposes both `ResilienceReport.qmd` and `SCROLReport.qmd`.
-- `_sync_template()` copies both QMDs + shared assets on startup.
-- Single and batch generation use the selected template.
-
-**Gate:** App generates a valid SCROL PDF for a sample row; `ResilienceReport.qmd` unchanged.
-
----
-
-### ⏳ M25 — Thread-safety fixes (REVIEW.md §4)
+### ✅ M25 — Thread-safety fixes (REVIEW.md §4)
 
 Fix all remaining direct widget access from background threads in `app/main.py`.
 
@@ -221,7 +208,7 @@ Fix remaining `ROOT_DIR` / relative-path misuse in the frozen app.
 
 ---
 
-### ⏳ M27 — Dead-code and stub cleanup (REVIEW.md §1, §2)
+### ✅ M27 — Dead-code and stub cleanup (REVIEW.md §1, §2)
 
 Remove broken stubs and unreachable code identified in the code review.
 
@@ -238,7 +225,7 @@ Remove broken stubs and unreachable code identified in the code review.
 
 ---
 
-### ⏳ M28 — Error handling hardening (REVIEW.md §6)
+### ✅ M28 — Error handling hardening (REVIEW.md §6)
 
 Replace silent failures with specific, logged errors.
 
@@ -261,7 +248,7 @@ Replace silent failures with specific, logged errors.
 
 ---
 
-### ⏳ M29 — Security hardening (REVIEW.md §3)
+### ✅ M29 — Security hardening (REVIEW.md §3)
 
 Address security findings from the code review.
 
@@ -282,7 +269,7 @@ Address security findings from the code review.
 
 ---
 
-### ⏳ M30 — Extract shared utilities (REVIEW.md §7)
+### ✅ M30 — Extract shared utilities (REVIEW.md §7)
 
 Eliminate copy-pasted code blocks by extracting shared helpers.
 
@@ -308,7 +295,7 @@ utils/
 
 ---
 
-### ⏳ M31 — Test coverage gaps (REVIEW.md §8)
+### ✅ M31 — Test coverage gaps (REVIEW.md §8)
 
 Add tests for the untested areas identified in the code review.
 
@@ -331,7 +318,7 @@ Add tests for the untested areas identified in the code review.
 
 ---
 
-### ⏳ M32 — Refactor `app/main.py` (REVIEW.md §9.1)
+### ✅ M32 — Refactor `app/main.py` (REVIEW.md §9.1)
 
 Break the ~3800-line monolithic file into focused modules.
 
@@ -346,3 +333,40 @@ Break the ~3800-line monolithic file into focused modules.
 **Rule:** No behaviour changes — tests must pass without modification. Gate condition requires the ruff suppression for `app/main.py` to be removed or significantly narrowed.
 
 **Gate:** All tests pass; `app/main.py` ≤ 300 lines; ruff suppression removed or reduced to specific codes only.
+
+---
+
+### ⏳ M33 — Encoding safety (REVIEW.md §9.3) ← NEXT
+
+Add `encoding="utf-8"` to all `open()` calls in pipeline scripts that are missing it.
+
+**Findings:**
+- Pipeline scripts (`generate_all_reports.py`, `clean_data.py`, `validate_reports.py`, `send_email.py`, etc.) have `open(path)` calls without `encoding=` — on Windows systems with non-UTF-8 ANSI code page (e.g. cp1252) this causes silent mojibake or `UnicodeDecodeError` when names contain non-ASCII characters.
+
+**Rule:** Add `encoding="utf-8"` to every `open()` call that reads or writes text in pipeline scripts and the new `app/` mixin files. Binary opens (`"rb"`, `"wb"`) are exempt.
+
+**Gate:** `grep -rn "open(" --include="*.py" | grep -v "encoding=" | grep -v '"rb"\|"wb"\|"ab"\|# noqa'` returns no hits in non-test pipeline files; all 201+ tests pass.
+
+---
+
+### ⏳ M34 — Output folder writability validation (REVIEW.md §3.2)
+
+Validate the output folder before starting generation or sending emails.
+
+**Finding:** `browse_output_folder()` stores the path without checking it exists and is writable. Generation silently fails with a confusing OS error if the folder is read-only or on a disconnected network share.
+
+**Rule:** After any output folder change (browse or direct entry), resolve the path, attempt `mkdir(parents=True, exist_ok=True)`, and verify writable with a probe write. Surface a clear error via `messagebox.showerror` if not writable.
+
+**Gate:** All tests pass; ruff clean; manual test: set output folder to `/tmp/readonly_test` (chmod 555) → error dialog shown before generation starts.
+
+---
+
+### ⏳ M35 — Log format standardisation (REVIEW.md §9.2)
+
+Unify the log format across all pipeline scripts.
+
+**Finding:** Pipeline scripts mix `print("[ERROR] ...")`, `print(f"[WARN] ...")`, raw `print(...)` with no timestamp, and `raise RuntimeError(...)` — no consistent level/timestamp scheme. The GUI swallows stdout from subprocesses into the generation log, making it hard for users to distinguish errors from progress messages.
+
+**Rule:** All pipeline scripts (`generate_all_reports.py`, `clean_data.py`, `validate_reports.py`, `send_email.py`, `convert_data.py`) must use the format `[LEVEL] message` where LEVEL ∈ `{INFO, WARN, ERROR, OK}`. No change to the GUI log infrastructure. No new dependencies (no `logging` module required).
+
+**Gate:** All tests pass; ruff clean; `grep -rn "^print(" --include="*.py"` in pipeline scripts shows no bare unlabelled prints.

@@ -6,24 +6,15 @@ Called by the GUI's "Convert Data" button via convert_and_save() -> bool.
 Also runnable standalone: python convert_data.py
 """
 
-import os
 import re
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Path resolution — same strategy as clean_data.py
-# ---------------------------------------------------------------------------
-if getattr(sys, "frozen", False):
-    if sys.platform == "win32":
-        _user_base = Path(os.environ.get("APPDATA", Path.home())) / "ResilienceScan"
-    else:
-        _user_base = Path.home() / ".local" / "share" / "resiliencescan"
-else:
-    _user_base = Path(__file__).resolve().parent
+from utils.path_utils import get_user_base_dir
+
+_user_base = get_user_base_dir()
 
 DATA_DIR = _user_base / "data"
 OUTPUT_PATH = DATA_DIR / "cleaned_master.csv"

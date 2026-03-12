@@ -504,7 +504,7 @@ class FeatureValidator:
     def generate_report(self):
         """Generate summary report"""
         print("\n" + "=" * 70)
-        print("VALIDATION SUMMARY")
+        print("[INFO] VALIDATION SUMMARY")
         print("=" * 70)
         print(f"Total Tests: {self.test_count}")
         print(
@@ -516,11 +516,9 @@ class FeatureValidator:
         print("=" * 70)
 
         if self.fail_count == 0:
-            print("\n[SUCCESS] ALL TESTS PASSED - Ready for production use!")
+            print("\n[OK] ALL TESTS PASSED - Ready for production use!")
         else:
-            print(
-                f"\n[WARNING] {self.fail_count} test(s) failed - Review failures above"
-            )
+            print(f"\n[WARN] {self.fail_count} test(s) failed - Review failures above")
 
         # Save detailed report
         report_path = Path("test_reports")
@@ -550,15 +548,15 @@ class FeatureValidator:
 
 def main():
     print("=" * 70)
-    print("RESILIENCE SCAN - FEATURE VALIDATION")
-    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("[INFO] RESILIENCE SCAN - FEATURE VALIDATION")
+    print(f"[INFO] Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     print()
 
     validator = FeatureValidator()
 
     # Run all tests
-    print("Running validation tests...\n")
+    print("[INFO] Running validation tests...\n")
 
     validator.test_data_exists()
     validator.test_quality_dashboard_script()

@@ -1,14 +1,14 @@
 import os
-import sys
-import pandas as pd
-from datetime import datetime
-from pathlib import Path
 import glob
 import smtplib
+from datetime import datetime
+from pathlib import Path
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+
+import pandas as pd
 
 try:
     import yaml
@@ -17,18 +17,10 @@ try:
 except ImportError:
     _HAS_YAML = False
 
-# ---------------------------------------------------------------------------
-# Path resolution — same strategy as clean_data.py
-# ---------------------------------------------------------------------------
-if getattr(sys, "frozen", False):
-    if sys.platform == "win32":
-        _user_base = (
-            Path(os.environ.get("APPDATA", str(Path.home()))) / "ResilienceScan"
-        )
-    else:
-        _user_base = Path.home() / ".local" / "share" / "resiliencescan"
-else:
-    _user_base = Path(__file__).resolve().parent
+from utils.filename_utils import safe_display_name
+from utils.path_utils import get_user_base_dir
+
+_user_base = get_user_base_dir()
 
 _CONFIG_FILE = _user_base / "config.yml"
 
@@ -58,7 +50,7 @@ if _HAS_YAML and _CONFIG_FILE.exists():
         SMTP_USERNAME = _smtp.get("username", SMTP_USERNAME)
         SMTP_PASSWORD = _smtp.get("password", SMTP_PASSWORD)
     except Exception as _e:
-        print(f"[WARNING] Could not load config.yml: {_e}")
+        print(f"[WARN] Could not load config.yml: {_e}")
 
 # IMPORTANT: When using Outlook COM (win32com.client), the system will try
 # accounts in priority order:
@@ -67,25 +59,6 @@ if _HAS_YAML and _CONFIG_FILE.exists():
 #   3. cg.verhoef@windesheim.nl
 #   4. Any available Outlook account
 #   5. SMTP as final fallback (if configured above)
-
-
-def safe_display_name(name):
-    """Sanitize name for display in filename (keep spaces and hyphens, replace slashes)"""
-    if pd.isna(name) or name == "":
-        return "Unknown"
-    # Replace forward slash with dash, keep other safe characters
-    name_str = str(name).strip()
-    # Replace problematic characters but keep it readable
-    name_str = name_str.replace("/", "-")
-    name_str = name_str.replace("\\", "-")
-    name_str = name_str.replace(":", "-")
-    name_str = name_str.replace("*", "")
-    name_str = name_str.replace("?", "")
-    name_str = name_str.replace('"', "'")
-    name_str = name_str.replace("<", "(")
-    name_str = name_str.replace(">", ")")
-    name_str = name_str.replace("|", "-")
-    return name_str
 
 
 def find_report_file(company, person, reports_folder):
@@ -254,7 +227,7 @@ def send_emails():
             failed_count += 1
             print(f"   [FAIL] Unexpected error: {type(e).__name__}: {e}")
 
-    print("\n[DONE] Finished!")
+    print("\n[OK] Finished!")
     print(f"   Sent: {sent_count}")
     print(f"   Failed: {failed_count}")
     print(f"   Mode: {'TEST' if TEST_MODE else 'LIVE'}")
