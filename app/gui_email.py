@@ -425,12 +425,16 @@ class EmailMixin:
     def save_config(self):
         """Save SMTP settings from GUI fields to config.yml."""
         if yaml is None:
-            messagebox.showerror("Error", "PyYAML is not installed — cannot save configuration.")
+            messagebox.showerror(
+                "Error", "PyYAML is not installed — cannot save configuration."
+            )
             return
         try:
             port = int(self.smtp_port_var.get() or 587)
         except ValueError:
-            messagebox.showerror("Invalid Port", "SMTP port must be a number (e.g. 587).")
+            messagebox.showerror(
+                "Invalid Port", "SMTP port must be a number (e.g. 587)."
+            )
             return
         data = {
             "smtp": {
@@ -947,7 +951,9 @@ class EmailMixin:
         try:
             smtp_port_val = int(self.smtp_port_var.get() or "587")
         except ValueError:
-            messagebox.showerror("Invalid Port", "SMTP port must be a number (e.g. 587).")
+            messagebox.showerror(
+                "Invalid Port", "SMTP port must be a number (e.g. 587)."
+            )
             return
 
         self.is_sending_emails = True
@@ -1232,9 +1238,7 @@ class EmailMixin:
                     try:
                         for i in range(1, outlook.Session.Accounts.Count + 1):
                             account = outlook.Session.Accounts.Item(i)
-                            available_accounts.append(
-                                (account.SmtpAddress, account)
-                            )
+                            available_accounts.append((account.SmtpAddress, account))
                         self.log_email(
                             f"  Found {len(available_accounts)} Outlook account(s)"
                         )
@@ -1379,7 +1383,9 @@ class EmailMixin:
 
             except smtplib.SMTPAuthenticationError as e:
                 failed_count += 1
-                self.log_email(f"  [ERROR] Authentication error — check username/password: {e}")
+                self.log_email(
+                    f"  [ERROR] Authentication error — check username/password: {e}"
+                )
                 self.email_tracker.mark_failed(company, person)
             except smtplib.SMTPException as e:
                 failed_count += 1
@@ -1387,11 +1393,14 @@ class EmailMixin:
                 self.email_tracker.mark_failed(company, person)
             except OSError as e:
                 failed_count += 1
-                self.log_email(f"  [ERROR] Network error connecting to SMTP server: {e}")
+                self.log_email(
+                    f"  [ERROR] Network error connecting to SMTP server: {e}"
+                )
                 self.email_tracker.mark_failed(company, person)
             except Exception as e:
                 failed_count += 1
                 import traceback
+
                 self.log_email(f"  [ERROR] FAILED ({type(e).__name__}): {e}")
                 self.log_email(f"  Full error:\n{traceback.format_exc()}")
                 self.email_tracker.mark_failed(company, person)

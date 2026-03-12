@@ -64,7 +64,9 @@ def test_check_r_packages_ready_subprocess_timeout(monkeypatch):
 
     monkeypatch.setattr("gui_system_check._find_rscript", lambda: "/usr/bin/Rscript")
 
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="R", timeout=30)):
+    with patch(
+        "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="R", timeout=30)
+    ):
         result = ap._check_r_packages_ready()
 
     assert result is not None

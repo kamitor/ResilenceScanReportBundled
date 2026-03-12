@@ -255,7 +255,9 @@ class DataCleaningValidator:
         if replacement_log:
             try:
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
-                pd.DataFrame(replacement_log).to_csv(REPLACEMENT_LOG, index=False, encoding="utf-8")
+                pd.DataFrame(replacement_log).to_csv(
+                    REPLACEMENT_LOG, index=False, encoding="utf-8"
+                )
                 self.log_issue(
                     "INFO",
                     f"Saved {len(replacement_log)} replacement details to: {REPLACEMENT_LOG}",

@@ -1352,4 +1352,3 @@ Click 'Run Quality Dashboard' for detailed analysis with visualizations."""
         self.stats_labels["companies"].config(text=str(self.stats["total_companies"]))
         self.stats_labels["reports"].config(text=str(self.stats["reports_generated"]))
         self.stats_labels["emails"].config(text=str(self.stats["emails_sent"]))
-

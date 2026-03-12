@@ -386,7 +386,9 @@ class GenerationMixin:
                             )
 
                             if validation_result["success"]:
-                                self.log_gen("[OK] Validation passed: All values match CSV")
+                                self.log_gen(
+                                    "[OK] Validation passed: All values match CSV"
+                                )
                                 messagebox.showinfo(
                                     "Success",
                                     f"Report generated and validated!\n\n{output_filename}\n\nAll values match CSV data.",
@@ -602,7 +604,9 @@ class GenerationMixin:
         failed = 0
         skipped = 0
 
-        self.root.after(0, lambda t=total: self.gen_progress.configure(maximum=t, value=0))
+        self.root.after(
+            0, lambda t=total: self.gen_progress.configure(maximum=t, value=0)
+        )
 
         for idx, row in self.df.iterrows():
             try:
@@ -620,7 +624,9 @@ class GenerationMixin:
                     safe_c = company.encode("ascii", "replace").decode("ascii")
                     safe_p = person.encode("ascii", "replace").decode("ascii")
                     display_text = f"Generating: {safe_c} - {safe_p}"
-                self.root.after(0, lambda t=display_text: self.gen_current_label.config(text=t))
+                self.root.after(
+                    0, lambda t=display_text: self.gen_current_label.config(text=t)
+                )
                 # Pre-generation validation: Check if record has sufficient data
                 validation_result = self.validate_record_for_report(row)
 
