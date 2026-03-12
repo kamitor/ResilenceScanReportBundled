@@ -157,216 +157,153 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 | M27 | Dead-code removal: `generate_executive_dashboard()` + toolbar button deleted | v0.21.31 |
 | M28 | Error handling: specific SMTP exceptions, SMTP port validation, temp PDF `finally` cleanup, debug logging in update_checker | v0.21.31 |
 | M29 | Security: `TEST_EMAIL` → `test@example.com` default (env var override); SMTP timeout=30 | v0.21.31 |
-| M30 | Extract shared utilities: `utils/path_utils`, `utils/filename_utils`, `utils/constants`; wire into 6 files | v0.21.32 |
-| M31 | Test coverage: `test_frozen_paths.py` (6), `test_csv_validation.py` (11), `test_shared_utils.py` (26), `test_email_send.py` (13), `test_thread_safety.py` (13) | v0.21.33 |
-| M32 | Refactor `app/main.py` → 224 lines; 5 mixin modules (`gui_data`, `gui_generate`, `gui_email`, `gui_settings`, `gui_logs`); ruff suppression removed | v0.21.34 |
+| M30 | Extract shared utilities: `utils/path_utils`, `utils/filename_utils`, `utils/constants`; wire into 6 files | v0.21.36 |
+| M31 | Test coverage: `test_frozen_paths.py` (6), `test_csv_validation.py` (11), `test_shared_utils.py` (26), `test_email_send.py` (13), `test_thread_safety.py` (13) | v0.21.36 |
+| M32 | Refactor `app/main.py` → 224 lines; 5 mixin modules (`gui_data`, `gui_generate`, `gui_email`, `gui_settings`, `gui_logs`); ruff suppression removed | v0.21.36 |
+| M33 | Encoding safety — `encoding="utf-8"` on all text `open()` calls in pipeline + app files | v0.21.36 |
+| M34 | Output folder writability validation: `_validate_output_folder()` called before generation starts | v0.21.38 |
+| M35 | Log format standardisation in pipeline scripts — all prints use `{INFO,WARN,ERROR,OK}` | v0.21.39 |
+| — | Installer hardening: `requireNamespace()` package checks; r-library ACL fix; `requirements_check.log` version validation | v0.21.37 |
+| — | Installer bug-fixes from real-world test: Rscript version regex; pre-flight skip; SID-based ACLs; tlmgr self-update; Linux SETUP_RESULT; CODENAME fallback | v0.21.40 |
+| — | Round-2 independent code review → `REVIEW2.md` (19 findings) | v0.21.40 |
 
-**Current version: v0.21.34 — 201 tests, ruff clean**
+**Current version: v0.21.40 — 201 tests, ruff clean**
 
 ---
 
 ## Active milestones
 
-### ✅ M25 — Thread-safety fixes (REVIEW.md §4)
+### ⏳ M36 — Frozen-app path fixes (REVIEW2.md §6) ← NEXT
 
-Fix all remaining direct widget access from background threads in `app/main.py`.
+Fix two remaining `ROOT_DIR` / relative-path misuses that will crash the frozen app.
 
-**Findings to fix (see `REVIEW.md` §4):**
-
-| # | Finding | Severity |
-|---|---|---|
-| 4.1 | `generate_reports_thread()` calls `self.gen_current_label.config(...)`, `self.progress_var.set(...)` etc. directly from background thread — not thread-safe | HIGH |
-| 4.2 | `self._gen_proc` TOCTOU race: written by generation thread, read/killed by main thread without a lock | MEDIUM |
-| 4.3 | `self.is_generating` boolean shared across threads without `threading.Event` | LOW |
-
-**Rules:**
-- All widget updates inside a `threading.Thread` must go through `self.root.after(0, callback)`.
-- Protect `self._gen_proc` with `threading.Lock()`.
-- Replace `self.is_generating` flag with `threading.Event()`.
-
-**Gate:** All 132+ tests pass; no Tkinter thread-safety warnings on Linux; cancel during generation does not crash.
-
----
-
-### ⏳ M26 — Frozen-app path fixes (REVIEW.md §5)
-
-Fix remaining `ROOT_DIR` / relative-path misuse in the frozen app.
-
-**Findings to fix (see `REVIEW.md` §5):**
+**Findings to fix (see `REVIEW2.md` §6):**
 
 | # | Finding | File | Severity |
 |---|---|---|---|
-| 5.1 | `generate_executive_dashboard()` uses `cwd=ROOT_DIR` — read-only in frozen app; Quarto will crash creating `.quarto/` | `app/main.py` | HIGH |
-| 5.2 | `view_cleaning_report()` uses `Path("./data/cleaning_report.txt")` — relative path fails in frozen app | `app/main.py` | MEDIUM |
-| 5.3 | Standalone scripts (`generate_all_reports.py`, `clean_data.py`, `validate_reports.py`) use `Path(__file__).parent` as root — document as dev-only CLI tools | various | LOW |
+| 6.1 | `email_template.json` saved to / loaded from `ROOT_DIR` — read-only `_internal/` in frozen app; `PermissionError` for any non-admin user who customises the template | `app/gui_email.py:478, 492` | HIGH |
+| 6.2 | `run_integrity_validation()` reads results from `Path("./data/...")` — relative path fails in frozen app where CWD is not the data dir | `app/gui_data.py:652–653` | MEDIUM |
 
 **Rules:**
-- Any `subprocess.run(..., cwd=...)` targeting a QMD render must use `cwd=str(_DATA_ROOT)`.
-- Any file read/write outside of subprocess must use `_DATA_ROOT / ...` not relative paths.
+- Replace `ROOT_DIR` with `_DATA_ROOT` in both `save_email_template()` and `load_email_template()`.
+- Replace `Path("./data/integrity_validation_report.*")` with `_DATA_ROOT / "data" / "integrity_validation_report.*"`.
+- Add `_DATA_ROOT` to the imports in each affected file.
 
-**Gate:** All tests pass; ruff clean; frozen-app test (or manual install) confirms no PermissionDenied on the affected code paths.
+**Gate:** All tests pass; ruff clean; frozen-app manual test confirms template saves to `APPDATA/ResilienceScan/` not `_internal/`.
 
 ---
 
-### ✅ M27 — Dead-code and stub cleanup (REVIEW.md §1, §2)
+### ⏳ M37 — Thread-safety residuals in generation + email threads (REVIEW2.md §1.1, §1.2, §1.3, §2.1, §2.2)
 
-Remove broken stubs and unreachable code identified in the code review.
+Fix remaining direct Tkinter widget writes in background threads and race conditions missed by M25.
 
-**Findings to fix (see `REVIEW.md` §1–2):**
+**Findings to fix (see `REVIEW2.md` §1, §2):**
 
 | # | Finding | File | Severity |
 |---|---|---|---|
-| 1.1 | `generate_executive_dashboard()` — references non-existent `ExecutiveDashboard.qmd`; button visible to users but always fails | `app/main.py` | MEDIUM |
-| 2.1 | Unused imports in `generate_all_reports.py` | `generate_all_reports.py` | LOW |
+| 1.1 | `generate_reports_thread()`: unreachable duplicate `except Exception` at line 863; progress bar and label never updated on error; dead code has `# noqa: B025` suppression | `app/gui_generate.py:854–874` | HIGH |
+| 2.1 | `generate_reports_thread()`: direct widget writes at lines 620–621 (`progress["maximum"]`, `progress["value"]`), 635–642 (`gen_current_label.config`), 858–874 (progress in exception handlers) — all outside `root.after()` | `app/gui_generate.py:620–874` | HIGH |
+| 1.2 | `_send_emails_impl()` reads `self.df` directly from background thread — `self.df` can be replaced on the main thread at any time | `app/gui_email.py:1058–1074` | MEDIUM |
+| 1.3 | `finalize()` closure accesses `self.df.columns` without a `None` guard — raises `AttributeError` if user reloads data during a send | `app/gui_email.py:1441` | MEDIUM |
+| 2.2 | `is_generating` and `is_sending_emails` are plain booleans written from background threads; contradicts the M25 `threading.Event` pattern | `app/gui_generate.py`, `app/gui_email.py` | MEDIUM |
 
-**Rule:** Only remove code confirmed dead — no refactoring, no feature changes. If a stub button is removed, also remove its menu/toolbar entry.
+**Rules:**
+- Collapse the duplicate `except Exception` into one; wrap all widget updates in `self.root.after(0, lambda: ...)`.
+- Capture `self.df` as a local variable on the main thread before starting the email thread; pass it into `_send_emails_impl`.
+- Add `if self.df is not None and` guard before `self.df.columns` in `finalize()`.
+- Reset `is_generating` / `is_sending_emails` via `root.after(0, ...)` so writes happen on the main thread.
 
-**Gate:** All 132+ tests pass; ruff clean; no visible broken buttons in the UI.
+**Gate:** All tests pass; ruff clean; `# noqa: B025` suppression removed; no direct widget writes in background thread code paths.
 
 ---
 
-### ✅ M28 — Error handling hardening (REVIEW.md §6)
+### ⏳ M38 — Error handling + resource leaks in GUI email/generate (REVIEW2.md §1.4, §3, §5)
 
-Replace silent failures with specific, logged errors.
+Harden the GUI email and generation paths to match the standards set for `send_email.py` in M28.
 
-**Findings to fix (see `REVIEW.md` §6):**
+**Findings to fix (see `REVIEW2.md` §1.4, §3, §5):**
 
 | # | Finding | File | Severity |
 |---|---|---|---|
-| 6.1 | `update_checker.check_for_update()` — bare `except Exception: pass`; network/JSON errors silently ignored | `update_checker.py` | MEDIUM |
-| 6.2 | `send_email.py` — single `except Exception` for all SMTP errors; auth vs network vs config errors indistinguishable | `send_email.py` | MEDIUM |
-| 6.3 | `generate_all_reports.py` — no `finally` to clean up temp PDF if `shutil.move()` raises | `generate_all_reports.py` | MEDIUM |
-| 6.4 | Multiple `except Exception: pass` blocks in `app/main.py` swallow debugging info | `app/main.py` | LOW |
-| 6.5 | SMTP port `int()` cast not guarded — `ValueError` if user types non-numeric value | `app/main.py` | LOW |
+| 1.4 | `save_config()` and `load_config()` call `yaml.dump` / `yaml.safe_load` without checking `yaml is None` — raises `AttributeError` with no helpful error if PyYAML not installed | `app/gui_email.py:439, 451` | MEDIUM |
+| 3.1 | `smtplib.SMTP()` constructed without `timeout=30` in the GUI send path (two sites) | `app/gui_email.py:1331, 1372` | MEDIUM |
+| 3.2 | SMTP port `int()` cast not guarded with `try/except ValueError` in `save_config()` and `start_email_all()` | `app/gui_email.py:430, 942` | MEDIUM |
+| 5.1 | SMTP `server` object not closed if `send_message()` raises — connection leaks until socket timeout | `app/gui_email.py:1331–1343, 1372–1376` | MEDIUM |
+| 5.2 | Temp PDF not cleaned up in `generate_single_report_worker()` if `shutil.move()` fails (M28 fixed `generate_all_reports.py` but not the GUI path) | `app/gui_generate.py:342–480` | MEDIUM |
+| 3.3 | Single broad `except Exception` covers all SMTP errors in the send loop — auth vs network vs config indistinguishable | `app/gui_email.py:1391` | LOW |
 
 **Rules:**
-- Catch specific exception types (`smtplib.SMTPAuthenticationError`, `OSError`, `ValueError`, etc.).
-- Log suppressed exceptions at DEBUG level where a log is available.
-- Add `finally: temp_path.unlink(missing_ok=True)` in generation loops.
+- Add `if yaml is None: messagebox.showerror(...); return` at the top of `save_config()` and `load_config()`.
+- Add `timeout=30` to both `smtplib.SMTP()` calls in `_send_emails_impl`.
+- Wrap port cast in `try/except ValueError` at both sites; show `messagebox.showerror` on bad input.
+- Use `with smtplib.SMTP(...) as server:` or add `try/finally: server.quit()` to both SMTP blocks.
+- Wrap `subprocess.run` + `shutil.move` in `generate_single_report_worker` with `try/finally: temp_path.unlink(missing_ok=True)`.
+- Add specific `except smtplib.SMTPAuthenticationError / smtplib.SMTPException / OSError` before the catch-all.
 
-**Gate:** All tests pass; ruff clean; email auth error shown to user distinctly from network error.
+**Gate:** All tests pass; ruff clean; temp PDF always cleaned up; SMTP connection always closed.
 
 ---
 
-### ✅ M29 — Security hardening (REVIEW.md §3)
+### ⏳ M39 — Dead code, duplicate helpers, pandas encoding (REVIEW2.md §8, §10)
 
-Address security findings from the code review.
+Remove remaining duplicate code and fix pandas encoding omissions.
 
-**Findings to fix (see `REVIEW.md` §3):**
+**Findings to fix (see `REVIEW2.md` §8, §10):**
 
 | # | Finding | File | Severity |
 |---|---|---|---|
-| 3.1 | `TEST_EMAIL` hardcoded to a real person's address — if `TEST_MODE` is accidentally True, sends to a real person | `send_email.py` | MEDIUM |
-| 3.2 | Output folder not validated for writability before use | `app/main.py` | LOW |
-| 3.3 | `smtplib.SMTP()` has no timeout — hangs indefinitely if server unresponsive | `send_email.py` | LOW |
+| 8.1 | `safe_filename()` / `safe_display_name()` still defined locally inside two methods in `gui_generate.py` — M30 extracted these to `utils/filename_utils.py` but missed this file | `app/gui_generate.py:284–302, 656–676` | MEDIUM |
+| 10.1 | `pd.read_csv()` and `pd.to_csv()` calls lack `encoding="utf-8"` — on Windows cp1252 systems, names with accented characters cause mojibake or `UnicodeDecodeError` | multiple files | MEDIUM |
+| 8.2 | `use_outlook = True` is set and never changed; the `else:` branch (direct SMTP when Outlook disabled) is ~30 lines of unreachable code | `app/gui_email.py:1193–1376` | LOW |
+| 8.3 | `update_time()` and `show_about()` are defined in `DataMixin` but have no relation to data operations | `app/gui_data.py:1356–1381` | LOW |
+| 10.2 | No comment in `generate_all_reports.py` documenting that it is a dev-only CLI tool (paths relative to repo root) | `generate_all_reports.py:13–15` | LOW |
 
 **Rules:**
-- `TEST_EMAIL` must default to `test@example.com` (or load from env var `RESILIENCESCAN_TEST_EMAIL`).
-- Output folder: validate it exists and is writable when the user changes it; show error if not.
-- Add `timeout=30` to `smtplib.SMTP()`.
+- Remove local `safe_filename` / `safe_display_name` from `gui_generate.py`; import from `utils.filename_utils`.
+- Add `encoding="utf-8"` to all `pd.read_csv()` / `pd.to_csv()` calls that operate on `cleaned_master.csv` or any user-data CSV.
+- Remove `use_outlook` variable and the unreachable `else:` SMTP block.
+- Move `update_time()` and `show_about()` to `app/main.py`.
+- Add `# NOTE: dev-only CLI tool` comment near path constants in `generate_all_reports.py`.
 
-**Gate:** All tests pass; `test@example.com` default verified; no real email address in source.
-
----
-
-### ✅ M30 — Extract shared utilities (REVIEW.md §7)
-
-Eliminate copy-pasted code blocks by extracting shared helpers.
-
-**Findings to fix (see `REVIEW.md` §7):**
-
-| # | Finding | Files affected | Severity |
-|---|---|---|---|
-| 7.1 | `safe_filename()` / `safe_display_name()` duplicated in 4 files | `generate_all_reports.py`, `send_email.py`, `app/main.py` (×2), `validate_reports.py` | MEDIUM |
-| 7.2 | User-data base-dir detection (`_user_base`) duplicated in 5 files | `convert_data.py`, `clean_data.py`, `email_tracker.py`, `send_email.py`, `validate_reports.py` | MEDIUM |
-| 7.3 | Score-column constant (`up__r`, ...) defined in 2 files | `clean_data.py`, `app/main.py` | LOW |
-
-**Target layout:**
-```
-utils/
-  filename_utils.py   — safe_filename(), safe_display_name()
-  path_utils.py       — get_user_base_dir() frozen/dev detection
-  constants.py        — SCORE_COLUMNS, REQUIRED_COLUMNS
-```
-
-**Rule:** Import the shared helper everywhere; delete all copies. No behaviour change.
-
-**Gate:** All 132+ tests pass; ruff clean; `utils/` is importable from all callers.
+**Gate:** All tests pass; ruff clean; `grep -n "safe_filename\|safe_display_name" app/gui_generate.py` shows only the import line, not local definitions.
 
 ---
 
-### ✅ M31 — Test coverage gaps (REVIEW.md §8)
+### ⏳ M40 — Test coverage gaps (REVIEW2.md §7)
 
-Add tests for the untested areas identified in the code review.
+Add tests for critical untested logic paths identified in the round-2 review.
 
-**Findings to address (see `REVIEW.md` §8):**
+**Findings to address (see `REVIEW2.md` §7):**
 
 | # | Finding | Priority |
 |---|---|---|
-| 8.1 | No tests for thread-safety: generation thread, cancel race, email thread | HIGH |
-| 8.2 | No tests for frozen-app path logic (`_asset_root`, `_data_root`, `_sync_template`) with `monkeypatch` | HIGH |
-| 8.3 | No tests for CSV validation / missing-column error path in `load_data_file()` | MEDIUM |
-| 8.4 | Email send thread success path and tracker update not tested end-to-end | MEDIUM |
+| 7.1 | No tests for `_sync_template()` copy logic — conditional mtime check, skip-when-current, run-when-dst-missing | MEDIUM |
+| 7.2 | No tests for email filename parser in `_send_emails_impl()` — legacy names, company names with ` - `, SCROL filenames | MEDIUM |
+| 7.3 | No tests for `_check_r_packages_ready()` — OK path, missing-package path, subprocess timeout | LOW |
+| 7.4 | `test_send_emails_smtp_auth_error` assertion uses `or "FAIL"` fallback — too weak | LOW |
 
 **Target test files:**
-- `tests/test_thread_safety.py` — cancel race, `_gen_proc` guard, widget-update scheduling
-- `tests/test_frozen_paths.py` — `monkeypatch` `sys.frozen`, `sys._MEIPASS`, platform checks
-- `tests/test_csv_validation.py` — missing columns, wrong dtypes, extra columns
-- `tests/test_email_send.py` — mocked SMTP, tracker state after send, status display update
+- `tests/test_frozen_paths.py` — extend with `_sync_template()` mtime scenarios
+- `tests/test_email_send.py` — add filename parser tests; tighten existing auth-error assertion
+- `tests/test_app_paths.py` (new) — mocked-subprocess tests for `_check_r_packages_ready()`
 
-**Gate:** Coverage on `gui_system_check.py`, `update_checker.py`, and path-resolution helpers reaches ≥ 80%; all new tests pass.
-
----
-
-### ✅ M32 — Refactor `app/main.py` (REVIEW.md §9.1)
-
-Break the ~3800-line monolithic file into focused modules.
-
-**Scope (see `REVIEW.md` §9):**
-- Extract generation logic → `app/gui_generate.py`
-- Extract email logic → `app/gui_email.py`
-- Extract data-load / filter logic → `app/gui_data.py`
-- Extract system-check / settings logic → `app/gui_settings.py`
-- `app/main.py` becomes the thin entry point: creates root, composes modules, starts mainloop.
-- Remove the `"app/main.py" = ["E", "W", "F", "UP", "B"]` ruff suppression line once the file is small enough to lint normally.
-
-**Rule:** No behaviour changes — tests must pass without modification. Gate condition requires the ruff suppression for `app/main.py` to be removed or significantly narrowed.
-
-**Gate:** All tests pass; `app/main.py` ≤ 300 lines; ruff suppression removed or reduced to specific codes only.
+**Gate:** All new tests pass; `test_send_emails_smtp_auth_error` asserts `"Authentication error" in captured.out` without the `or "FAIL"` fallback; ruff clean.
 
 ---
 
-### ⏳ M33 — Encoding safety (REVIEW.md §9.3) ← NEXT
+### ⏳ M41 — Security + installer residuals (REVIEW2.md §4, §9.2)
 
-Add `encoding="utf-8"` to all `open()` calls in pipeline scripts that are missing it.
+Address remaining low-priority security and installer findings.
 
-**Findings:**
-- Pipeline scripts (`generate_all_reports.py`, `clean_data.py`, `validate_reports.py`, `send_email.py`, etc.) have `open(path)` calls without `encoding=` — on Windows systems with non-UTF-8 ANSI code page (e.g. cp1252) this causes silent mojibake or `UnicodeDecodeError` when names contain non-ASCII characters.
+**Findings to fix (see `REVIEW2.md` §4, §9.2):**
 
-**Rule:** Add `encoding="utf-8"` to every `open()` call that reads or writes text in pipeline scripts and the new `app/` mixin files. Binary opens (`"rb"`, `"wb"`) are exempt.
+| # | Finding | File | Severity |
+|---|---|---|---|
+| 4.1 | Hardcoded institution email addresses in Outlook account priority list | `app/gui_email.py:1206–1209` | LOW |
+| 9.2 | `set -e` + `|| true` in `setup_linux.sh` silently swallows `Rscript not found` errors — `MISSING` stays empty, packages appear to pass | `packaging/setup_linux.sh:190, 195` | LOW |
 
-**Gate:** `grep -rn "open(" --include="*.py" | grep -v "encoding=" | grep -v '"rb"\|"wb"\|"ab"\|# noqa'` returns no hits in non-test pipeline files; all 201+ tests pass.
+**Rules:**
+- Move `priority_accounts` list to `config.yml` under an `outlook_accounts` key; read at send time via `send_config`.
+- In `setup_linux.sh`, replace `2>/dev/null || true` on Rscript verify calls with error output redirected to the log; add `command -v Rscript` guard before package checks.
 
----
-
-### ⏳ M34 — Output folder writability validation (REVIEW.md §3.2)
-
-Validate the output folder before starting generation or sending emails.
-
-**Finding:** `browse_output_folder()` stores the path without checking it exists and is writable. Generation silently fails with a confusing OS error if the folder is read-only or on a disconnected network share.
-
-**Rule:** After any output folder change (browse or direct entry), resolve the path, attempt `mkdir(parents=True, exist_ok=True)`, and verify writable with a probe write. Surface a clear error via `messagebox.showerror` if not writable.
-
-**Gate:** All tests pass; ruff clean; manual test: set output folder to `/tmp/readonly_test` (chmod 555) → error dialog shown before generation starts.
-
----
-
-### ⏳ M35 — Log format standardisation (REVIEW.md §9.2)
-
-Unify the log format across all pipeline scripts.
-
-**Finding:** Pipeline scripts mix `print("[ERROR] ...")`, `print(f"[WARN] ...")`, raw `print(...)` with no timestamp, and `raise RuntimeError(...)` — no consistent level/timestamp scheme. The GUI swallows stdout from subprocesses into the generation log, making it hard for users to distinguish errors from progress messages.
-
-**Rule:** All pipeline scripts (`generate_all_reports.py`, `clean_data.py`, `validate_reports.py`, `send_email.py`, `convert_data.py`) must use the format `[LEVEL] message` where LEVEL ∈ `{INFO, WARN, ERROR, OK}`. No change to the GUI log infrastructure. No new dependencies (no `logging` module required).
-
-**Gate:** All tests pass; ruff clean; `grep -rn "^print(" --include="*.py"` in pipeline scripts shows no bare unlabelled prints.
+**Gate:** All tests pass; ruff clean; no hardcoded email addresses in Python source files.
