@@ -104,7 +104,7 @@ def send_emails():
     outlook = None
     use_smtp = False
 
-    print("[EMAIL] Trying to connect to Outlook...")
+    print("[INFO] Trying to connect to Outlook...")
     try:
         import win32com.client as win32
 
@@ -112,7 +112,7 @@ def send_emails():
         print("[OK] Outlook COM connected successfully!")
     except Exception as e:
         print(f"[WARN] Outlook COM not available: {e}")
-        print("[EMAIL] Falling back to SMTP...")
+        print("[INFO] Falling back to SMTP...")
         use_smtp = True
 
         # Check SMTP configuration
@@ -126,7 +126,7 @@ def send_emails():
             return
 
     # Only process emails that have reports
-    print(f"[SCAN] Scanning reports folder: {REPORTS_FOLDER}")
+    print(f"[INFO] Scanning reports folder: {REPORTS_FOLDER}")
     available_reports = list(Path(REPORTS_FOLDER).glob("*.pdf"))
     print(f"[OK] Found {len(available_reports)} PDF reports")
 
@@ -149,10 +149,10 @@ def send_emails():
         recipient = TEST_EMAIL if TEST_MODE else email
 
         if TEST_MODE:
-            print(f"[TEST] Sending to {TEST_EMAIL} for {company}")
+            print(f"[INFO] Sending to {TEST_EMAIL} for {company}")
             real_email = email
         else:
-            print(f"[SEND] Sending to {email} for {company}")
+            print(f"[INFO] Sending to {email} for {company}")
 
         # Build email subject
         subject = f"Your Resilience Scan Report – {company}"
@@ -216,16 +216,16 @@ def send_emails():
 
         except smtplib.SMTPAuthenticationError as e:
             failed_count += 1
-            print(f"   [FAIL] Authentication error (check username/password): {e}")
+            print(f"   [ERROR] Authentication error (check username/password): {e}")
         except smtplib.SMTPException as e:
             failed_count += 1
-            print(f"   [FAIL] SMTP error: {e}")
+            print(f"   [ERROR] SMTP error: {e}")
         except OSError as e:
             failed_count += 1
-            print(f"   [FAIL] Network/connection error: {e}")
+            print(f"   [ERROR] Network/connection error: {e}")
         except Exception as e:
             failed_count += 1
-            print(f"   [FAIL] Unexpected error: {type(e).__name__}: {e}")
+            print(f"   [ERROR] Unexpected error: {type(e).__name__}: {e}")
 
     print("\n[OK] Finished!")
     print(f"   Sent: {sent_count}")

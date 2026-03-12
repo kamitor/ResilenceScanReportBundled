@@ -80,7 +80,7 @@ def validate_all(
     for pdf_path in pdf_files:
         parsed = _parse_pdf_filename(pdf_path.name)
         if parsed is None:
-            print(f"\n[SKIP] Cannot parse filename: {pdf_path.name}")
+            print(f"\n[INFO] Cannot parse filename: {pdf_path.name}")
             errors += 1
             continue
 
@@ -99,7 +99,7 @@ def validate_all(
             print(f"   [OK] {result['message']}")
             passed += 1
         else:
-            print(f"   [FAIL] {result['message']}")
+            print(f"   [ERROR] {result['message']}")
             for info in result.get("details", {}).values():
                 if not info.get("matches"):
                     exp = (

@@ -475,10 +475,10 @@ def clean_and_fix():
     print("\n" + "=" * 70)
     print("[OK] CLEANING COMPLETED SUCCESSFULLY")
     print("=" * 70)
-    print(f"[DATA] Final dataset: {validator.statistics['final_rows']} records")
-    print(f"[REMOVED] Removed: {validator.statistics['removed_rows']} records")
-    print(f"[REPORT] {CLEANING_REPORT}")
-    print(f"[LOG] {VALIDATION_LOG}")
+    print(f"[INFO] Final dataset: {validator.statistics['final_rows']} records")
+    print(f"[INFO] Removed: {validator.statistics['removed_rows']} records")
+    print(f"[INFO] {CLEANING_REPORT}")
+    print(f"[INFO] {VALIDATION_LOG}")
     print("=" * 70)
 
     # Summary for GUI

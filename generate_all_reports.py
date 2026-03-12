@@ -107,11 +107,11 @@ def generate_reports():
 
         # Check if already exists
         if output_file.exists():
-            print(f"[SKIP] Skipping {company} - {person} (already exists)")
+            print(f"[INFO] Skipping {company} - {person} (already exists)")
             skipped += 1
             continue
 
-        print(f"\n[FILE] Generating report {generated + 1}/{total_entries}:")
+        print(f"\n[INFO] Generating report {generated + 1}/{total_entries}:")
         print(f"   Company: {company}")
         print(f"   Person: {person}")
         print(f"   Output: {output_filename}")
@@ -133,7 +133,7 @@ def generate_reports():
         ]
 
         # Execute quarto render with verbose output
-        print("   [FIX] Running: quarto render...")
+        print("   [INFO] Running: quarto render...")
         try:
             result = subprocess.run(
                 cmd,
@@ -152,7 +152,7 @@ def generate_reports():
                 else:
                     print("   [ERROR] Output file not found after successful render")
                     print(
-                        f"   [SAMPLE] stdout: {result.stdout[-500:]}"
+                        f"   [INFO] stdout: {result.stdout[-500:]}"
                         if result.stdout
                         else ""
                     )
@@ -164,7 +164,7 @@ def generate_reports():
                     failed += 1
             else:
                 print(f"   [ERROR] Failed (exit code: {result.returncode})")
-                print("   [SAMPLE] Error output:")
+                print("   [INFO] Error output:")
                 if result.stderr:
                     # Show first 2000 chars so root cause error is visible
                     error_text = (
@@ -180,7 +180,7 @@ def generate_reports():
                         if len(result.stdout) > 500
                         else result.stdout
                     )
-                    print(f"   [OUTPUT] Output: {stdout_text}")
+                    print(f"   [INFO] Output: {stdout_text}")
                 failed += 1
 
         except subprocess.TimeoutExpired:
