@@ -4,6 +4,7 @@ gui_logs.py — LogsMixin: logs tab, log methods, log controls.
 Mixed into ResilienceScanGUI in app/main.py.
 """
 
+import sys
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -62,8 +63,8 @@ class LogsMixin:
         try:
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(log_message)
-        except Exception:
-            pass
+        except OSError as e:
+            print(f"[gui_logs] Log write failed: {e}", file=sys.stderr)
 
         def _update():
             self.system_log.insert(tk.END, log_message)
@@ -125,8 +126,8 @@ class LogsMixin:
             try:
                 if LOG_FILE.exists():
                     LOG_FILE.unlink()
-            except Exception:
-                pass
+            except OSError as e:
+                print(f"[gui_logs] Log delete failed: {e}", file=sys.stderr)
 
             self.log("Logs cleared")
 

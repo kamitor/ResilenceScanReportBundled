@@ -368,10 +368,14 @@ class DataMixin:
         filename = filedialog.askopenfilename(
             title="Select Data File",
             filetypes=[
-                ("All supported formats", "*.xlsx *.xls *.ods *.xml *.csv *.tsv"),
-                ("Excel files", "*.xlsx *.xls"),
+                (
+                    "All supported formats",
+                    "*.xlsx *.xlsm *.xls *.ods *.xml *.json *.jsonl *.csv *.tsv",
+                ),
+                ("Excel files", "*.xlsx *.xlsm *.xls"),
                 ("OpenDocument Spreadsheet", "*.ods"),
                 ("XML files", "*.xml"),
+                ("JSON files", "*.json *.jsonl"),
                 ("CSV / TSV files", "*.csv *.tsv"),
                 ("All files", "*.*"),
             ],

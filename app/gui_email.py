@@ -13,6 +13,7 @@ from tkinter import messagebox, scrolledtext, ttk
 import pandas as pd
 
 from app.app_paths import CONFIG_FILE, DATA_FILE, _DATA_ROOT
+from utils.constants import SMTP_TIMEOUT_SECONDS
 
 try:
     import yaml
@@ -1351,7 +1352,7 @@ class EmailMixin:
                     self.log_email(
                         f"  [SMTP] Connecting to SMTP: {smtp_server}:{smtp_port}..."
                     )
-                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
                     try:
                         self.log_email("  [SMTP] Starting TLS...")
                         server.starttls()

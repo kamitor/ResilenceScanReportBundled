@@ -25,3 +25,11 @@ SCORE_COLUMNS = [
 
 # Columns that must be present for a row to generate a report
 REQUIRED_COLUMNS = ["company_name", "name", "email_address"]
+
+# Timeout constants (seconds)
+QUARTO_TIMEOUT_SECONDS = 300  # 5 minutes per report render
+R_SUBPROCESS_TIMEOUT = 30  # R version / package checks
+SMTP_TIMEOUT_SECONDS = 30  # SMTP connection timeout
+
+# Filename fallback when name is missing
+UNKNOWN_NAME_PLACEHOLDER = "Unknown"

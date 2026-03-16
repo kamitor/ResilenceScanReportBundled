@@ -22,6 +22,7 @@ Usage in the GUI:
 """
 
 import re
+import sys
 import threading
 from pathlib import Path
 
@@ -48,12 +49,8 @@ def _current_version() -> str:
 
     # Dev: parse pyproject.toml at the repo root
     try:
-        import sys
-
         if getattr(sys, "frozen", False):
-            import sys as _sys
-
-            root = Path(_sys._MEIPASS)
+            root = Path(sys._MEIPASS)
         else:
             root = Path(__file__).resolve().parent
         toml = (root / "pyproject.toml").read_text(encoding="utf-8")
@@ -101,12 +98,10 @@ def check_for_update() -> dict | None:
         if _parse_version(latest_ver) > _parse_version(current):
             return {"version": latest_ver, "url": release_url}
     except Exception as e:
-        import sys as _sys2
-
-        if not getattr(_sys2, "frozen", False):
+        if not getattr(sys, "frozen", False):
             print(
                 f"[DEBUG] update check failed: {type(e).__name__}: {e}",
-                file=_sys2.stderr,
+                file=sys.stderr,
             )
 
     return None

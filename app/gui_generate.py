@@ -21,6 +21,7 @@ from app.app_paths import (
     _check_r_packages_ready,
     _r_library_path,
 )
+from utils.constants import QUARTO_TIMEOUT_SECONDS, SCORE_COLUMNS
 from utils.filename_utils import safe_display_name, safe_filename
 
 
@@ -288,11 +289,7 @@ class GenerationMixin:
 
             # Output filename
             date_str = datetime.now().strftime("%Y%m%d")
-            template_name = Path(self.template_var.get()).stem
-            if template_name.startswith("Report"):
-                report_name = template_name
-            else:
-                report_name = template_name
+            report_name = Path(self.template_var.get()).stem
 
             output_filename = (
                 f"{date_str} {report_name} ({display_company} - {display_person}).pdf"
@@ -365,7 +362,7 @@ class GenerationMixin:
                     cwd=str(_DATA_ROOT),
                     capture_output=True,
                     text=True,
-                    timeout=300,
+                    timeout=QUARTO_TIMEOUT_SECONDS,
                     env=single_env,
                 )
 
@@ -523,26 +520,8 @@ class GenerationMixin:
             return {"is_valid": False, "reason": "Invalid/missing email"}
 
         # Check score availability - need at least 5 valid scores out of 15
-        score_columns = [
-            "up__r",
-            "up__c",
-            "up__f",
-            "up__v",
-            "up__a",
-            "in__r",
-            "in__c",
-            "in__f",
-            "in__v",
-            "in__a",
-            "do__r",
-            "do__c",
-            "do__f",
-            "do__v",
-            "do__a",
-        ]
-
         available_scores = 0
-        for col in score_columns:
+        for col in SCORE_COLUMNS:
             if col in row.index:
                 val = row[col]
                 if pd.notna(val) and val not in ["?", "", " "]:
@@ -550,7 +529,7 @@ class GenerationMixin:
                         float_val = float(str(val).replace(",", "."))
                         if 0 <= float_val <= 5:
                             available_scores += 1
-                    except Exception:
+                    except (ValueError, TypeError):
                         pass
 
         min_scores_required = 5
@@ -646,17 +625,7 @@ class GenerationMixin:
 
                 # Output filename with template name
                 date_str = datetime.now().strftime("%Y%m%d")
-
-                # Extract report name from template path
-                template_name = Path(
-                    self.template_var.get()
-                ).stem  # Gets filename without extension
-                if template_name.startswith("Report"):
-                    # For report variations, use the full name (e.g., "Report1_CircularBarplot")
-                    report_name = template_name
-                else:
-                    # For standard reports, use the template name as is
-                    report_name = template_name
+                report_name = Path(self.template_var.get()).stem
 
                 output_filename = f"{date_str} {report_name} ({display_company} - {display_person}).pdf"
                 out_dir = Path(self.output_folder_var.get())

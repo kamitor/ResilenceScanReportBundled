@@ -1,11 +1,12 @@
 """
 convert_data.py — converts the master database file to cleaned_master.csv.
 
-Supported input formats: .xlsx, .xls, .ods, .xml, .csv, .tsv
+Supported input formats: .xlsx, .xlsm, .xls (including SpreadsheetML), .ods, .xml, .json, .jsonl, .csv, .tsv
 Called by the GUI's "Convert Data" button via convert_and_save() -> bool.
 Also runnable standalone: python convert_data.py
 """
 
+import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -19,9 +20,33 @@ _user_base = get_user_base_dir()
 DATA_DIR = _user_base / "data"
 OUTPUT_PATH = DATA_DIR / "cleaned_master.csv"
 
-_SUPPORTED_EXTENSIONS = (".xlsx", ".xls", ".ods", ".xml", ".csv", ".tsv")
+_SUPPORTED_EXTENSIONS = (
+    ".xlsx",
+    ".xlsm",
+    ".xls",
+    ".ods",
+    ".xml",
+    ".json",
+    ".jsonl",
+    ".csv",
+    ".tsv",
+)
 # Columns whose presence marks the real header row
 _HEADER_MARKERS = {"submitdate", "reportsent"}
+
+# SpreadsheetML 2003 namespace (used by Excel when saving as "XML Spreadsheet")
+_SPREADSHEETML_NS = "urn:schemas-microsoft-com:office:spreadsheet"
+
+# Column name aliases: source-format names → cleaned_master.csv convention.
+# Applied after _normalize_col() so keys must already be in normalised form.
+# "company-name" loses its hyphen → "companyname"; "Company name:" keeps the
+# space → "company_name" — so we alias companyname → company_name for sources
+# that use the hyphenated header (e.g. SpreadsheetML exports from LimeSurvey).
+_COL_ALIASES: dict[str, str] = {
+    "date": "submitdate",
+    "email": "email_address",
+    "companyname": "company_name",
+}
 
 
 def _normalize_col(name: str) -> str:
@@ -74,8 +99,56 @@ def _header_skiprows(path: Path, sheet: str | int) -> int:
     return _find_header_row(raw)
 
 
+def _is_spreadsheetml(path: Path) -> bool:
+    """Return True if path is a SpreadsheetML 2003 XML file disguised as .xls."""
+    if path.suffix.lower() != ".xls":
+        return False
+    try:
+        with path.open("rb") as f:
+            chunk = f.read(512)
+        return b"urn:schemas-microsoft-com:office:spreadsheet" in chunk
+    except OSError:
+        return False
+
+
+def _read_spreadsheetml(path: Path) -> pd.DataFrame:
+    """Read an Excel XML Spreadsheet (SpreadsheetML 2003) file.
+
+    These files have a .xls extension but are plain XML.  pandas cannot read
+    them with the xlrd/openpyxl engines; we parse them directly with
+    ElementTree.
+    """
+    ns = f"{{{_SPREADSHEETML_NS}}}"
+    tree = ET.parse(path)
+    root = tree.getroot()
+    rows = root.findall(f".//{ns}Row")
+    if not rows:
+        raise ValueError(f"No rows found in SpreadsheetML file: {path}")
+
+    def _cell_text(cell: ET.Element) -> str | None:
+        data = cell.find(f"{ns}Data")
+        return data.text if data is not None else None
+
+    headers = [_cell_text(c) for c in rows[0].findall(f"{ns}Cell")]
+    records = []
+    for row in rows[1:]:
+        cells = row.findall(f"{ns}Cell")
+        record: dict[str, str | None] = {h: None for h in headers if h is not None}
+        for i, cell in enumerate(cells):
+            if i < len(headers) and headers[i] is not None:
+                record[headers[i]] = _cell_text(cell)
+        records.append(record)
+    return pd.DataFrame(records)
+
+
 def _read_excel(path: Path) -> pd.DataFrame:
-    """Read an Excel file, auto-detecting sheet name and header row."""
+    """Read an Excel file, auto-detecting sheet name and header row.
+
+    Delegates to _read_spreadsheetml() for .xls files that are actually
+    SpreadsheetML 2003 XML (e.g. exported by LimeSurvey or similar tools).
+    """
+    if _is_spreadsheetml(path):
+        return _read_spreadsheetml(path)
     xl = pd.ExcelFile(path)
     sheet = "MasterData" if "MasterData" in xl.sheet_names else xl.sheet_names[0]
     skip = _header_skiprows(path, sheet)
@@ -158,7 +231,7 @@ def _read_xml(path: Path) -> pd.DataFrame:
             raise ValueError("No records extracted from XML")
 
         return pd.DataFrame(records)
-    except Exception as exc:
+    except (ET.ParseError, ValueError) as exc:
         raise ValueError(f"All XML read strategies failed for {path}: {exc}") from exc
 
 
@@ -205,51 +278,138 @@ def _read_raw_csv(path: Path) -> pd.DataFrame:
     )
 
 
+def _read_json(path: Path) -> pd.DataFrame:
+    """Read a JSON or JSON Lines file into a DataFrame.
+
+    Tries four strategies in order:
+      1. JSON Lines (.jsonl or explicit lines=True) — one JSON object per line.
+      2. JSON top-level array: [{...}, {...}, ...]
+      3. JSON object with a known data-wrapper key
+         ("data", "responses", "records", "rows", "results", "items").
+      4. First list-valued key found in a top-level dict.
+    Raises ValueError if no strategy succeeds.
+    """
+    ext = path.suffix.lower()
+
+    # Strategy 1: JSON Lines
+    if ext == ".jsonl":
+        df = pd.read_json(path, lines=True, dtype=str)
+        if not df.empty:
+            return df
+
+    # Parse as full JSON document
+    with path.open(encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    # Strategy 2: top-level list
+    if isinstance(data, list):
+        return pd.DataFrame(data)
+
+    if isinstance(data, dict):
+        # Strategy 3: known wrapper key
+        for key in ("data", "responses", "records", "rows", "results", "items"):
+            if key in data and isinstance(data[key], list):
+                return pd.DataFrame(data[key])
+        # Strategy 4: first list-valued key
+        for val in data.values():
+            if isinstance(val, list) and val:
+                return pd.DataFrame(val)
+        # Single-record dict
+        return pd.DataFrame([data])
+
+    raise ValueError(f"Cannot convert JSON structure to DataFrame: {path}")
+
+
 def _read_source(path: Path) -> pd.DataFrame:
     """Dispatch to the correct reader based on file extension."""
     ext = path.suffix.lower()
-    if ext in (".xlsx", ".xls"):
+    if ext in (".xlsx", ".xlsm", ".xls"):
         return _read_excel(path)
     elif ext == ".ods":
         return _read_ods(path)
     elif ext == ".xml":
         return _read_xml(path)
+    elif ext in (".json", ".jsonl"):
+        return _read_json(path)
     elif ext in (".csv", ".tsv"):
         return _read_raw_csv(path)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 
 
-def _preserve_reportsent(df: pd.DataFrame, old_csv: Path) -> pd.DataFrame:
-    """Override reportsent values with those from the existing CSV.
+def _apply_col_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename columns that differ between source formats and cleaned_master.csv convention.
 
-    The app's CSV is the authoritative source for email-send tracking state;
-    the source file may have been re-exported with stale values.  Matching is
-    attempted in order: 'hash', 'email_address', then 'name'+'company_name'.
+    Applies _COL_ALIASES after _normalize_col() has already been run.
+    Only renames if the target column does not already exist.
     """
-    if "reportsent" not in df.columns or not old_csv.exists():
-        return df
+    renames = {
+        src: dst
+        for src, dst in _COL_ALIASES.items()
+        if src in df.columns and dst not in df.columns
+    }
+    return df.rename(columns=renames)
+
+
+def _upsert_with_existing(new_df: pd.DataFrame, existing_path: Path) -> pd.DataFrame:
+    """Merge new_df on top of the existing CSV (upsert, new records first).
+
+    All rows from new_df appear first (in their original order), followed by
+    rows from the existing CSV that are not matched by any row in new_df.
+    This ensures newly imported records are always at the top of the database.
+
+    reportsent values from the existing CSV are restored for any record in
+    new_df that was already present, so email-send tracking is never lost.
+
+    Matching key priority: email_address > name+company_name.
+
+    If no existing CSV is present the function returns new_df unchanged.
+    """
+    if not existing_path.exists():
+        return new_df
     try:
-        old = pd.read_csv(old_csv, low_memory=False, encoding="utf-8")
+        old_df = pd.read_csv(existing_path, low_memory=False, encoding="utf-8")
     except Exception:
-        return df
-    if "reportsent" not in old.columns:
-        return df
+        return new_df
+    if old_df.empty:
+        return new_df
 
-    for key in ("hash", "email_address"):
-        if key in old.columns and key in df.columns:
-            mapping = old.dropna(subset=[key]).set_index(key)["reportsent"].to_dict()
-            filled = df[key].map(mapping).fillna(df["reportsent"])
-            df["reportsent"] = filled.infer_objects(copy=False)
-            return df
+    def _match_key(df: pd.DataFrame) -> pd.Series:
+        if "email_address" in df.columns:
+            return df["email_address"].astype(str).str.lower().str.strip()
+        if {"name", "company_name"} <= set(df.columns):
+            return (
+                df["name"].astype(str).str.lower().str.strip()
+                + "|"
+                + df["company_name"].astype(str).str.lower().str.strip()
+            )
+        return pd.Series([""] * len(df), dtype=str)
 
-    if {"name", "company_name"} <= (set(old.columns) & set(df.columns)):
-        old_key = old["name"].astype(str) + "|" + old["company_name"].astype(str)
-        new_key = df["name"].astype(str) + "|" + df["company_name"].astype(str)
-        mapping = dict(zip(old_key, old["reportsent"]))
-        filled = new_key.map(mapping).fillna(df["reportsent"])
-        df["reportsent"] = filled.infer_objects(copy=False)
-    return df
+    new_keys = _match_key(new_df)
+    old_keys = _match_key(old_df)
+
+    # Restore reportsent for records in new_df that already existed in the CSV
+    if "reportsent" in old_df.columns:
+        new_df = new_df.copy()
+        if "reportsent" not in new_df.columns:
+            new_df["reportsent"] = False
+        key_to_sent = dict(zip(old_keys, old_df["reportsent"]))
+        restored = new_keys.map(key_to_sent)
+        new_df["reportsent"] = restored.fillna(new_df["reportsent"]).infer_objects(
+            copy=False
+        )
+
+    # Append old rows that are not represented in new_df
+    new_key_set = set(new_keys.tolist())
+    old_remainder = old_df[~old_keys.isin(new_key_set)].copy()
+
+    merged = pd.concat([new_df, old_remainder], ignore_index=True)
+    print(
+        f"[INFO] Upsert: {len(new_df)} from new file"
+        f" + {len(old_remainder)} retained from existing CSV"
+        f" = {len(merged)} total"
+    )
+    return merged
 
 
 def convert_and_save(path: Path | None = None) -> bool:
@@ -258,8 +418,10 @@ def convert_and_save(path: Path | None = None) -> bool:
     If ``path`` is provided, it is used directly.  Otherwise, the first
     supported file found in DATA_DIR is used (.xlsx/.xls preferred).
 
-    Preserves the reportsent column from any existing CSV so that email
-    send-tracking state is not lost when the source is refreshed.
+    If cleaned_master.csv already exists the new records are merged on top
+    (upsert mode): newly imported rows appear first, existing rows not present
+    in the new file are retained afterwards.  reportsent (email-send tracking)
+    is always preserved for records that already existed.
 
     Returns True on success, False on failure.
     """
@@ -291,10 +453,13 @@ def convert_and_save(path: Path | None = None) -> bool:
     # Drop unnamed artifact columns produced by Excel/ODS formatting
     df = df.loc[:, ~df.columns.str.fullmatch(r"unnamed_\d+")]
 
+    # Map source-specific column names to cleaned_master.csv convention
+    df = _apply_col_aliases(df)
+
     print(f"[INFO] {len(df)} rows, {len(df.columns)} columns after normalization")
 
-    # Restore per-row send-tracking state from any existing CSV
-    df = _preserve_reportsent(df, OUTPUT_PATH)
+    # Upsert: merge new records on top of any existing CSV
+    df = _upsert_with_existing(df, OUTPUT_PATH)
 
     # Guarantee reportsent column exists and defaults to False
     if "reportsent" not in df.columns:

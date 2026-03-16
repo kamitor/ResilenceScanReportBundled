@@ -78,7 +78,7 @@ class DataCleaningValidator:
             shutil.copy2(file_path, backup_path)
             self.log_issue("INFO", f"Backup created: {backup_path}")
             return backup_path
-        except Exception as e:
+        except OSError as e:
             self.log_issue("ERROR", f"Failed to create backup: {e}")
             return None
 
@@ -262,7 +262,7 @@ class DataCleaningValidator:
                     "INFO",
                     f"Saved {len(replacement_log)} replacement details to: {REPLACEMENT_LOG}",
                 )
-            except Exception as e:
+            except OSError as e:
                 self.log_issue("ERROR", f"Failed to save replacement log: {e}")
 
         if total_replacements > 0:
@@ -319,7 +319,7 @@ class DataCleaningValidator:
             with open(VALIDATION_LOG, "w", encoding="utf-8") as f:
                 json.dump(log_data, f, indent=2)
             self.log_issue("INFO", f"Validation log saved: {VALIDATION_LOG}")
-        except Exception as e:
+        except (OSError, TypeError) as e:
             self.log_issue("ERROR", f"Failed to save validation log: {e}")
 
     def generate_report(self):
@@ -382,7 +382,7 @@ class DataCleaningValidator:
                 f.write(report_text)
             print("\n" + report_text)
             self.log_issue("INFO", f"Cleaning report saved: {CLEANING_REPORT}")
-        except Exception as e:
+        except OSError as e:
             print("\n" + report_text)
             self.log_issue("ERROR", f"Failed to save cleaning report: {e}")
 
@@ -397,7 +397,7 @@ def clean_and_fix():
     # Ensure data directory exists
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
+    except OSError as e:
         return False, f"Failed to create data directory {DATA_DIR}: {e}"
 
     # Check input file

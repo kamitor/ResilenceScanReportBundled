@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils.constants import R_SUBPROCESS_TIMEOUT
+
 
 # ---------------------------------------------------------------------------
 # Path resolution — split into asset root (QMD + images, read-only) and
@@ -108,14 +110,7 @@ def _sync_template() -> None:
 
 def _config_path() -> Path:
     """Return path to config.yml in the writable user data directory."""
-    if getattr(sys, "frozen", False):
-        if sys.platform == "win32":
-            _base = Path(os.environ.get("APPDATA", str(Path.home()))) / "ResilienceScan"
-        else:
-            _base = Path.home() / ".local" / "share" / "resiliencescan"
-    else:
-        _base = ROOT_DIR
-    return _base / "config.yml"
+    return _data_root() / "config.yml"
 
 
 def _r_library_path() -> "Path | None":
@@ -161,7 +156,7 @@ def _check_r_packages_ready() -> "str | None":
             [rscript, "-e", script],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=R_SUBPROCESS_TIMEOUT,
             env=env,
         )
         out = (result.stdout + result.stderr).strip()

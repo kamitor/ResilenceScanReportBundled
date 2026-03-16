@@ -17,6 +17,7 @@ try:
 except ImportError:
     _HAS_YAML = False
 
+from utils.constants import SMTP_TIMEOUT_SECONDS
 from utils.filename_utils import safe_display_name
 from utils.path_utils import get_user_base_dir
 
@@ -196,7 +197,7 @@ def send_emails():
                     msg.attach(part)
 
                 # Send via SMTP
-                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
+                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.send_message(msg)

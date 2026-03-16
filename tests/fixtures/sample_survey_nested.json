@@ -1,0 +1,63 @@
+{
+  "export_info": {
+    "tool": "ResilienceScan",
+    "version": "1.0",
+    "exported_at": "2026-01-20T08:00:00Z"
+  },
+  "responses": [
+    {
+      "submitdate": "2026-01-18 14:00:00",
+      "name": "Clara Nested",
+      "function": "Procurement Manager",
+      "company_name": "Nested Retail Group",
+      "country": "Germany",
+      "email_address": "clara.nested@nestedretail.de",
+      "sector": "Wholesale and retail trade; repair of motor vehicles and motorcycles",
+      "subsector": "Retail trade, except of motor vehicles and motorcycles",
+      "size_number_of_employees": "[500-999]",
+      "value_strategy": "Customer Intimacy",
+      "up__r": 3,
+      "up__c": 4,
+      "up__f": 3,
+      "up__v": 4,
+      "up__a": 3,
+      "in__r": 5,
+      "in__c": 4,
+      "in__f": 5,
+      "in__v": 4,
+      "in__a": 5,
+      "do__r": 2,
+      "do__c": 3,
+      "do__f": 2,
+      "do__v": 3,
+      "do__a": 2
+    },
+    {
+      "submitdate": "2026-01-19 10:15:00",
+      "name": "David Wrapper",
+      "function": "CEO",
+      "company_name": "Wrapped Industries GmbH",
+      "country": "Germany",
+      "email_address": "david.wrapper@wrappedindustries.de",
+      "sector": "Manufacturing",
+      "subsector": "Manufacture of food products",
+      "size_number_of_employees": "[10-49]",
+      "value_strategy": "Operational Excellence",
+      "up__r": 5,
+      "up__c": 5,
+      "up__f": 4,
+      "up__v": 5,
+      "up__a": 4,
+      "in__r": 3,
+      "in__c": 3,
+      "in__f": 4,
+      "in__v": 3,
+      "in__a": 4,
+      "do__r": 4,
+      "do__c": 5,
+      "do__f": 4,
+      "do__v": 5,
+      "do__a": 4
+    }
+  ]
+}

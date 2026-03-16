@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="sDT"><NumberFormat ss:Format="Short Date"/></Style>
+  </Styles>
+  <Worksheet ss:Name="Sheet1">
+    <Table>
+      <Row>
+        <Cell><Data ss:Type="String">date</Data></Cell>
+        <Cell><Data ss:Type="String">name</Data></Cell>
+        <Cell><Data ss:Type="String">function</Data></Cell>
+        <Cell><Data ss:Type="String">company-name</Data></Cell>
+        <Cell><Data ss:Type="String">country</Data></Cell>
+        <Cell><Data ss:Type="String">email</Data></Cell>
+        <Cell><Data ss:Type="String">Sector</Data></Cell>
+        <Cell><Data ss:Type="String">Subsector</Data></Cell>
+        <Cell><Data ss:Type="String">Size (number of employees)</Data></Cell>
+        <Cell><Data ss:Type="String">Value strategy</Data></Cell>
+        <Cell><Data ss:Type="String">Up - R1a</Data></Cell>
+        <Cell><Data ss:Type="String">Up - R1b</Data></Cell>
+        <Cell><Data ss:Type="String">Up - R1c</Data></Cell>
+        <Cell><Data ss:Type="String">Up - R2</Data></Cell>
+        <Cell><Data ss:Type="String">Up - R3</Data></Cell>
+        <Cell><Data ss:Type="String">In - R1a</Data></Cell>
+        <Cell><Data ss:Type="String">In - R1b</Data></Cell>
+        <Cell><Data ss:Type="String">In - R1c</Data></Cell>
+        <Cell><Data ss:Type="String">In - R2</Data></Cell>
+        <Cell><Data ss:Type="String">In - R3</Data></Cell>
+        <Cell><Data ss:Type="String">Do - R1a</Data></Cell>
+        <Cell><Data ss:Type="String">Do - R1b</Data></Cell>
+        <Cell><Data ss:Type="String">Do - R1c</Data></Cell>
+        <Cell><Data ss:Type="String">Do - R2</Data></Cell>
+        <Cell><Data ss:Type="String">Do - R3</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="String">2026-03-01T10:00:00</Data></Cell>
+        <Cell><Data ss:Type="String">Greta Fixture</Data></Cell>
+        <Cell><Data ss:Type="String">Supply Chain Manager</Data></Cell>
+        <Cell><Data ss:Type="String">SpreadsheetML Corp</Data></Cell>
+        <Cell><Data ss:Type="String">Netherlands</Data></Cell>
+        <Cell><Data ss:Type="String">greta.fixture@spreadsheetml.nl</Data></Cell>
+        <Cell><Data ss:Type="String">Manufacturing</Data></Cell>
+        <Cell><Data ss:Type="String">Manufacture of machinery</Data></Cell>
+        <Cell><Data ss:Type="String">[100-499]</Data></Cell>
+        <Cell><Data ss:Type="String">Operational Excellence</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="String">2026-03-02T14:30:00</Data></Cell>
+        <Cell><Data ss:Type="String">Hugo Sample</Data></Cell>
+        <Cell><Data ss:Type="String">Operations Director</Data></Cell>
+        <Cell><Data ss:Type="String">XLS Test Industries</Data></Cell>
+        <Cell><Data ss:Type="String">Belgium</Data></Cell>
+        <Cell><Data ss:Type="String">hugo.sample@xlstest.be</Data></Cell>
+        <Cell><Data ss:Type="String">Wholesale and retail trade; repair of motor vehicles and motorcycles</Data></Cell>
+        <Cell><Data ss:Type="String">Wholesale trade, except of motor vehicles and motorcycles</Data></Cell>
+        <Cell><Data ss:Type="String">[50-99]</Data></Cell>
+        <Cell><Data ss:Type="String">Customer Intimacy</Data></Cell>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+      </Row>
+    </Table>
+  </Worksheet>
+</Workbook>

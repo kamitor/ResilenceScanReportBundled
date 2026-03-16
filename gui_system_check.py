@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils.constants import R_SUBPROCESS_TIMEOUT
+
 # All R packages required by ResilienceReport.qmd
 _R_PACKAGES = [
     "readr",
@@ -215,14 +217,14 @@ def _r_lib_path() -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def _run(cmd: list, env: dict | None = None) -> tuple:
+def _run(cmd: list, env: dict | None = None) -> tuple[int, str]:
     """Run a command and return (returncode, combined stdout+stderr)."""
     try:
         r = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=R_SUBPROCESS_TIMEOUT,
             env=env,
         )
         return r.returncode, (r.stdout + r.stderr).strip()

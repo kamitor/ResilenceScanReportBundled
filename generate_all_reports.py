@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from utils.constants import QUARTO_TIMEOUT_SECONDS
 from utils.filename_utils import safe_display_name, safe_filename
 
 # NOTE: dev-only CLI tool — paths are relative to repo root and will not work
@@ -141,7 +142,7 @@ def generate_reports():
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
-                timeout=300,  # 5 minute timeout per report
+                timeout=QUARTO_TIMEOUT_SECONDS,
             )
 
             if result.returncode == 0:

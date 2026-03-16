@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 ## Commands
 
@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run the GUI (main application)
+# Run the GUI
 python app/main.py
 
 # Run pipeline steps individually
@@ -24,62 +24,71 @@ ruff check .
 ruff format --check .
 pytest
 pytest tests/test_smoke.py::test_import_main_module   # single test
-pytest tests/test_pipeline_sample.py                  # anonymised fixture tests
 
-# Regenerate the anonymised test fixture
+# Regenerate anonymised test fixture
 python scripts/make_sample_data.py
 ```
 
 ## Release workflow
 
-Bump `version` in `pyproject.toml` and push to `main`. CI detects no git tag `v<version>` exists and fires the build matrix. Do **not** create tags manually. macOS is not a target — only Windows and Linux matter.
+Bump `version` in `pyproject.toml` and push to `main`. CI detects no git tag `v<version>` and fires the build matrix. **Do not create tags manually.** macOS is not a target — only Windows and Linux.
 
 ---
 
 ## Architecture
 
-`app/main.py` is the canonical entry point (Tkinter GUI + PyInstaller target).
+`app/main.py` is the entry point (Tkinter GUI + PyInstaller target, 255 lines). It inherits from five mixins:
 
-```
-app/main.py
-  ├── imports convert_data          → Excel/ODS/XML/CSV/TSV → data/cleaned_master.csv
-  ├── imports clean_data            → cleans and validates CSV in-place
-  ├── imports email_tracker         → tracks per-recipient send status
-  ├── imports gui_system_check      → verifies R/Quarto/TinyTeX are present at runtime
-  ├── imports update_checker        → background GitHub release check
-  └── imports dependency_manager    → stub (installation handled by the installer)
-```
+| Mixin | File | Responsibility |
+|---|---|---|
+| `DataMixin` | `app/gui_data.py` | Data tab, CSV load/convert, quality analysis |
+| `GenerationMixin` | `app/gui_generate.py` | Generation tab, PDF render, thread-safe cancel |
+| `EmailMixin` | `app/gui_email.py` | Email tabs, SMTP send, template editor |
+| `SettingsMixin` | `app/gui_settings.py` | Startup guard, system check, installer |
+| `LogsMixin` | `app/gui_logs.py` | Logs tab, log/log_gen/log_email helpers |
+
+Shared infrastructure:
+
+| Module | Purpose |
+|---|---|
+| `app/app_paths.py` | All path constants + `_sync_template()`, `_check_r_packages_ready()` |
+| `utils/path_utils.py` | `get_user_base_dir()` for pipeline scripts |
+| `utils/filename_utils.py` | `safe_filename()`, `safe_display_name()` |
+| `utils/constants.py` | `SCORE_COLUMNS`, `REQUIRED_COLUMNS` |
+| `gui_system_check.py` | R / Quarto / TinyTeX runtime checks |
+| `email_tracker.py` | Per-recipient send-status JSON store |
+| `update_checker.py` | Background GitHub release check |
 
 ### Path resolution (frozen vs dev)
 
-| Variable | Dev | Frozen (installed) |
-|----------|-----|--------------------|
-| `ROOT_DIR` / `_asset_root()` | repo root | `sys._MEIPASS` (`_internal/`) |
-| `_DATA_ROOT` / `_data_root()` | repo root | `%APPDATA%\ResilienceScan` / `~/.local/share/resiliencescan` |
+| Constant | Dev | Frozen (installed) |
+|---|---|---|
+| `ROOT_DIR` / `_asset_root()` | repo root | `sys._MEIPASS` (`_internal/`) — **read-only** |
+| `_DATA_ROOT` / `_data_root()` | repo root | `%APPDATA%\ResilienceScan` (Win) / `~/.local/share/resiliencescan` (Linux) |
 | `DATA_FILE` | `repo/data/cleaned_master.csv` | `APPDATA/data/cleaned_master.csv` |
-| `REPORTS_DIR` | `repo/reports/` | `APPDATA/reports/` (temp write location only) |
+| `REPORTS_DIR` | `repo/reports/` | `APPDATA/reports/` — temp write location only |
 | `DEFAULT_OUTPUT_DIR` | `repo/reports/` | `Documents\ResilienceScanReports\` |
-| `TEMPLATE` | `repo/ResilienceReport.qmd` | `APPDATA/ResilienceScan/ResilienceReport.qmd` (copied from `_internal/` by `_sync_template()`) |
 
-**Rule:** Any code that reads or displays reports must use `Path(self.output_folder_var.get())`, never `REPORTS_DIR`.
+**Rule:** Code that reads or displays reports must use `Path(self.output_folder_var.get())`, never `REPORTS_DIR`.
+
+`_sync_template()` runs at import time and copies QMDs + assets from `_asset_root()` to `_data_root()` so Quarto can write `.quarto/` next to them (frozen `_internal/` is read-only).
 
 ---
 
 ## Pipeline flow
 
 ```
-data/*.xlsx  (or .xls, .ods, .xml, .tsv, .csv)
-     │ convert_data.py
-     ▼
+data/*.xlsx / .xlsm / .xls (incl. SpreadsheetML) / .ods / .xml / .json / .jsonl / .csv / .tsv
+     │ convert_data.py  — reads → normalises columns → upserts into cleaned_master.csv
+     ▼                    (new records first; reportsent preserved for existing rows)
 data/cleaned_master.csv
      │ clean_data.py
      ▼
 data/cleaned_master.csv  [validated & cleaned]
-     │ generate_all_reports.py + ResilienceReport.qmd  (calls quarto render)
+     │ generate_all_reports.py + ResilienceReport.qmd or SCROLReport.qmd
      ▼
-reports/YYYYMMDD ResilienceScanReport (Company - Person).pdf
+reports/YYYYMMDD <TemplateName> (Company Name - Firstname Lastname).pdf
      │ validate_reports.py
-     ▼
      │ send_email.py
      ▼
 emails via Outlook COM (Windows) or SMTP fallback (Office365)
@@ -87,101 +96,164 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 
 **Key data file:** `data/cleaned_master.csv`
 **Score columns:** `up__r/c/f/v/a`, `in__r/c/f/v/a`, `do__r/c/f/v/a` — range 0–5
-**PDF naming:** `YYYYMMDD ResilienceScanReport (Company Name - Firstname Lastname).pdf`
+**PDF naming:** `YYYYMMDD <TemplateName> (Company Name - Firstname Lastname).pdf`
 
 ---
 
 ## Packaging strategy
 
-**Staged installer** — the installer silently downloads and sets up all dependencies (R, Quarto, TinyTeX, R packages) during installation.
+**Staged installer** — NSIS (Windows) / postinst (Linux) silently downloads and installs R, Quarto, TinyTeX, and R packages during installation. Python is bundled by PyInstaller (`--onedir`).
 
-`ResilienceReport.qmd` is deeply LaTeX-dependent (TikZ, kableExtra, custom titlepage extension, custom fonts, raw `.tex` includes). The PDF engine **cannot** be switched to Typst or WeasyPrint — TinyTeX is required.
+`ResilienceReport.qmd` and `SCROLReport.qmd` are deeply LaTeX-dependent (TikZ, kableExtra, custom titlepage extension, custom fonts, raw `.tex` includes). **The PDF engine cannot be switched to Typst or WeasyPrint** — TinyTeX is required.
+
+**Do not modify `.qmd` templates** — they contain interdependent LaTeX/R/Quarto logic that is fragile to whitespace and encoding changes.
 
 ### Pinned dependency versions
 
 | Dependency | Version | Notes |
-|------------|---------|-------|
-| R | 4.5.1 (pinned) | SYSTEM account has no network at install time; no auto-discovery |
+|---|---|---|
+| R | 4.5.1 | Pinned — SYSTEM account has no network at install time |
 | Quarto | 1.6.39 | GitHub releases |
 | TinyTeX | Quarto-pinned | `quarto install tinytex` |
-| Python | ≥ 3.11 | bundled by PyInstaller |
+| Python | ≥ 3.11 | Bundled by PyInstaller |
 
 ### R packages
 
 `readr`, `dplyr`, `stringr`, `tidyr`, `ggplot2`, `knitr`, `fmsb`, `scales`, `viridis`, `patchwork`, `RColorBrewer`, `gridExtra`, `png`, `lubridate`, `kableExtra`, `rmarkdown`, `jsonlite`, `ggrepel`, `cowplot`
 
-### LaTeX packages (tlmgr names)
+### LaTeX packages (tlmgr)
 
 `pgf`, `xcolor`, `colortbl`, `booktabs`, `multirow`, `float`, `wrapfig`, `pdflscape`, `geometry`, `preprint`, `graphics`, `tabu`, `threeparttable`, `threeparttablex`, `ulem`, `makecell`, `environ`, `trimspaces`, `caption`, `hyperref`, `setspace`, `fancyhdr`, `microtype`, `lm`, `needspace`, `varwidth`, `mdwtools`, `xstring`, `tools`
 
-**Note:** `capt-of` is NOT installed via tlmgr (tar extraction fails on fresh TinyTeX). A minimal `capt-of.sty` stub is written directly by `setup_dependencies.ps1` / `setup_linux.sh` and registered with `mktexlsr`.
+**Note:** `capt-of` is NOT installed via tlmgr — a minimal stub is written by the installer scripts directly and registered with `mktexlsr`.
 
 ---
 
 ## Working rule
 
-**Do not start the next milestone until the current one is fully verified by its gate condition.** Each gate must pass on a clean run before any work on the next milestone begins.
+**Do not start the next milestone until the current one is fully verified by its gate condition.**
 
 ---
 
-## Completed milestones
+## Milestone history (summary)
 
-| Milestone | Description | Version |
-|---|---|---|
-| M1 | Fix CI, ship real app | v0.13.0 |
-| M2 | Fix paths, consolidate cleaners | v0.14.0 |
-| M3 | Implement data conversion | v0.15.0 |
-| M4 | End-to-end report generation | v0.16.0 |
-| M5 | Fix validation + email tracker | v0.17.0 |
-| M6 | Email sending | v0.18.0 |
-| M7 | Startup system check guard | v0.19.0 |
-| M8 | Complete installer: R + Quarto + TinyTeX | v0.20.5 |
-| M9 | Fix Windows installer: R path, LaTeX packages, capt-of | v0.20.14 |
-| M10 | Fix report generation in installed app (frozen path split) | v0.21.0 |
-| M11 | Anonymised sample dataset + pipeline smoke tests | v0.21.0 |
-| M12 | End-to-end CI pipeline test (e2e.yml) | v0.21.0 |
-| M13 | In-app update checker | v0.21.0 |
-| M14 | README download badges + CI auto-update | v0.21.0 |
-| M15 | Fix frozen app render failures (.quarto/ PermissionDenied, TinyTeX Quarto 1.4+, R_LIBS) | v0.21.4–v0.21.7 |
-| M16 | Cross-platform test runner (platform.yml — Ubuntu + Windows on every push) | v0.21.14 |
-| M17 | e2e CI passes on both platforms | v0.21.17 |
-| M18 | Installer/version consistency tests; setup_linux.sh ASCII fix | v0.21.18 |
-| M19 | Windows real-machine testing (Write-Log order, R pin, _version.py, output folder, cancel race, email folder) | v0.21.19–v0.21.25 |
-| M20 | Setup completion feedback (sentinel flags, in-app polling, desktop notifications) | v0.21.26 |
-| M21 | Fix email sending (thread-safe logging, send_config dict, except handler, tracker display) | v0.21.27 |
-| M22 | R installer hardening + multi-format import (ODS/XML/CSV/TSV) | v0.21.28–v0.21.29 |
-| M24 | Independent code analysis → `REVIEW.md` (27 findings) | v0.21.29 |
-| M23 | SCROL matrix report template (`SCROLReport.qmd`); template dropdown; `_sync_template()` copies both QMDs | v0.21.30 |
-| M25 | Thread-safety: `threading.Event` cancel, `threading.Lock` proc guard, all widget updates via `root.after(0,…)` | v0.21.31 |
-| M26 | Frozen-app path fixes: `view_cleaning_report` uses `_DATA_ROOT`; `generate_executive_dashboard` removed (M27) | v0.21.31 |
-| M27 | Dead-code removal: `generate_executive_dashboard()` + toolbar button deleted | v0.21.31 |
-| M28 | Error handling: specific SMTP exceptions, SMTP port validation, temp PDF `finally` cleanup, debug logging in update_checker | v0.21.31 |
-| M29 | Security: `TEST_EMAIL` → `test@example.com` default (env var override); SMTP timeout=30 | v0.21.31 |
-| M30 | Extract shared utilities: `utils/path_utils`, `utils/filename_utils`, `utils/constants`; wire into 6 files | v0.21.36 |
-| M31 | Test coverage: `test_frozen_paths.py` (6), `test_csv_validation.py` (11), `test_shared_utils.py` (26), `test_email_send.py` (13), `test_thread_safety.py` (13) | v0.21.36 |
-| M32 | Refactor `app/main.py` → 224 lines; 5 mixin modules (`gui_data`, `gui_generate`, `gui_email`, `gui_settings`, `gui_logs`); ruff suppression removed | v0.21.36 |
-| M33 | Encoding safety — `encoding="utf-8"` on all text `open()` calls in pipeline + app files | v0.21.36 |
-| M34 | Output folder writability validation: `_validate_output_folder()` called before generation starts | v0.21.38 |
-| M35 | Log format standardisation in pipeline scripts — all prints use `{INFO,WARN,ERROR,OK}` | v0.21.39 |
-| — | Installer hardening: `requireNamespace()` package checks; r-library ACL fix; `requirements_check.log` version validation | v0.21.37 |
-| — | Installer bug-fixes from real-world test: Rscript version regex; pre-flight skip; SID-based ACLs; tlmgr self-update; Linux SETUP_RESULT; CODENAME fallback | v0.21.40 |
-| — | Round-2 independent code review → `REVIEW2.md` (19 findings) | v0.21.40 |
-| — | `launch_setup.ps1` blocks NSIS until `setup_complete.flag` written (installer now shows "Complete" only after R/Quarto/TinyTeX installed) | v0.21.41 |
-| M36 | Frozen-app path fixes: `email_template.json` → `_DATA_ROOT`; `integrity_validation_report.*` → `_DATA_ROOT / data` | v0.21.41 |
-| M37 | Thread-safety: all widget writes in `generate_reports_thread()` via `root.after`; duplicate `except Exception` removed; `self.df` snapshot for email thread; `finalize()` None guard | v0.21.41 |
-| M38 | Error handling: `yaml is None` guard; port cast guards; SMTP `timeout=30`; `try/finally` SMTP close; specific SMTP exceptions; temp PDF `finally` in single-report worker | v0.21.41 |
-| M39 | Dead code: `use_outlook` + unreachable else SMTP block removed; local `safe_filename`/`safe_display_name` in `gui_generate.py` replaced with `utils.filename_utils` import; `update_time`/`show_about` moved to `main.py`; `pd.read_csv`/`to_csv` + `encoding="utf-8"` | v0.21.41 |
-| M40 | Test coverage: `test_frozen_paths.py` `_sync_template()` (4 new); `test_app_paths.py` `_check_r_packages_ready()` (5 new); `test_email_send.py` auth-error assertion tightened | v0.21.41 |
-| M41 | Security: `priority_accounts` hardcoded emails moved to `config.yml` `outlook_accounts` key; `setup_linux.sh` Rscript guard + stderr-to-log | v0.21.41 |
-| M42 | Installer: `launch_setup.ps1` deletes stale `setup_complete.flag` before starting task; NSIS checks exit code and shows error dialog on FAIL | v0.21.42 |
-| M43 | Installer smoke test: `installer-smoke` CI job runs the Windows `.exe` silently with a ci_test_mode stub + stale FAIL flag, verifies PASS; gates `publish` | v0.21.43 |
-| M44 | Installer smoke test hardening: file checks (11 files), flag-state checks (PASS/running/error.log), log-content checks (6 patterns + ERROR/FATAL forbidden), reinstall idempotency run | v0.21.44 |
-| M45 | Installer robustness + in-app R repair: pre-flight checks only bundled r-library; trap writes FAIL flag; binary→source fallback in retry; stale-flag STALE sentinel; `_install_r_packages_now()` auto-repair on startup; "Repair R Packages" dashboard button | v0.21.45 |
+| Range | What was built |
+|---|---|
+| M1–M7 | Core app: CI, paths, data conversion, report generation, email, startup guard |
+| M8–M9 | Windows installer (R, Quarto, TinyTeX, LaTeX packages, capt-of) |
+| M10–M14 | Frozen-app path split, smoke tests, e2e CI, update checker, README badges |
+| M15–M19 | Frozen-app render fixes, cross-platform CI, Windows real-machine testing |
+| M20–M23 | Setup completion feedback, email fixes, R hardening, SCROL template |
+| M24 | Independent code review → REVIEW.md (27 findings) |
+| M25–M29 | Thread-safety, frozen paths, dead-code removal, error handling, security |
+| M30–M35 | Shared utils extraction, test coverage (69 tests), main.py refactor to 5 mixins, encoding safety, output folder validation, log standardisation |
+| M36–M41 | Round-2 review fixes: path correctness, thread-safety, error handling, dead code, test coverage, security |
+| M42–M45 | Installer hardening: stale-flag cleanup, smoke test CI, R repair in-app |
+| M46 | SpreadsheetML XLS support + upsert (new records first, reportsent preserved) |
+| M47 | JSON / JSONL / XLSM format support; dummy fixtures in tests/fixtures/ |
+| M48 | Non-GUI quick wins: encoding fix, dead code, constants, pandas removal from filename_utils |
+| M49 | GUI improvements: dead if/else, score constant, SMTP/Quarto timeout constants, silent log fix |
 
-**Current version: v0.21.45 — 238 tests, ruff clean**
+**Current version: v0.21.49 — 268 tests, ruff clean**
 
 ---
 
 ## Active milestones
 
-All milestones M1–M45 complete. No active milestones.
+---
+
+### M49 — GUI improvements
+
+Gate: all tests pass; ruff clean; version → v0.21.49.
+
+Each task is independent and can be done in any order.
+
+**T1 — Fix dead if/else in report name logic** (`app/gui_generate.py:291–295, 654–659`)
+Both branches of the `if template_name.startswith("Report"):` block assign the same value. Remove the conditional:
+```python
+# Before (both branches identical — dead code)
+if template_name.startswith("Report"):
+    report_name = template_name
+else:
+    report_name = template_name
+
+# After
+report_name = Path(self.template_var.get()).stem
+```
+Apply the fix in both occurrences (single-report worker at line 291 and batch thread at line 654).
+
+**T2 — Narrow score-validation exception** (`app/gui_generate.py:553`)
+`except Exception: pass` in the score float-conversion loop catches everything. Only `float()` can raise here:
+```python
+# Before
+except Exception:
+    pass
+
+# After
+except (ValueError, TypeError):
+    pass
+```
+
+**T3 — Replace inline score-column list with shared constant** (`app/gui_generate.py:520–550`)
+`validate_record_for_report()` hardcodes the full score-column list, duplicating `utils/constants.SCORE_COLUMNS`. Replace with:
+```python
+from utils.constants import SCORE_COLUMNS
+# ... then use SCORE_COLUMNS directly in the validation loop
+```
+
+**T4 — Add SMTP timeout constant** (`app/gui_email.py:1354`, `send_email.py:199`)
+Both files hardcode `timeout=30` for SMTP connections. Centralise:
+```python
+# utils/constants.py
+SMTP_TIMEOUT_SECONDS = 30
+```
+Import and use in both files.
+
+**T5 — Fix silent log-write failures** (`app/gui_logs.py:65, 128`)
+`except Exception: pass` swallows disk-full and permission errors silently. Replace with:
+```python
+except OSError as e:
+    import sys
+    print(f"[gui_logs] Log write failed: {e}", file=sys.stderr)
+```
+
+**T6 — Add Quarto render timeout constant to GUI** (`app/gui_generate.py:368`)
+`timeout=300` in the GUI render call is a duplicate of the value in `generate_all_reports.py`. After M48 adds `QUARTO_TIMEOUT_SECONDS` to `constants.py`, import and use it here too.
+
+**T7 — Verify PDF output filename stem** (`app/gui_generate.py:290, 652`)
+After T1 removes the dead if/else, `report_name` will equal `Path(self.template_var.get()).stem`, producing e.g. `"ResilienceReport"`. Confirm this matches the filename convention users expect (`YYYYMMDD ResilienceReport (Company - Person).pdf`). If historical PDFs used a different stem, add a mapping dict in `constants.py` and apply it here.
+
+---
+
+### M50 — Module splitting
+
+Gate: all tests pass; ruff clean; version → v0.21.50.
+
+**T1 — Split `app/gui_email.py` (1,480 lines)**
+
+Extract into three files:
+
+| New file | New mixin | Contents |
+|---|---|---|
+| `app/gui_email_template.py` | `EmailTemplateMixin` | Template editor tab, load/save/reset/preview, placeholder logic |
+| `app/gui_email_send.py` | `EmailSendMixin` | Sending tab, SMTP thread, Outlook COM, per-row send loop, stop button |
+| `app/gui_email.py` | `EmailMixin` | Inherits both above + tracker display, mark-sent/pending, status table |
+
+Update `app/main.py`: add `EmailTemplateMixin`, `EmailSendMixin` to `ResilienceScanGUI` inheritance list.
+
+**T2 — Extract `app/gui_quality.py` from `gui_data.py` (1,365 lines)**
+
+Move quality-analysis methods (~400 lines) into a new `QualityMixin`:
+- `run_quality_dashboard()`, `analyze_data_quality()`, `run_data_cleaner()`
+- `analyze_duplicates()`, `show_row_details()`, `export_filtered_data()`
+
+`DataMixin` inherits `QualityMixin`; `ResilienceScanGUI` inheritance list unchanged.
+
+---
+
+### M51 — Exception hardening + type hints
+
+Gate: all tests pass; ruff clean; version → v0.21.51.
+
+- **5.3** Narrow high-value `except Exception` in pipeline scripts (`clean_data.py`, `generate_all_reports.py`, `send_email.py`) to specific exception types (`OSError`, `ValueError`, `subprocess.CalledProcessError`)
+- **6.4** Add return type hints (`-> str | None`, `-> bool`, `-> Path | None`) to all public functions in `gui_system_check.py`

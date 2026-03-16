@@ -53,7 +53,7 @@ class EmailTracker:
             try:
                 data = json.loads(_TRACKER_FILE.read_text(encoding="utf-8"))
                 self._recipients = {r["key"]: r for r in data.get("recipients", [])}
-            except Exception:
+            except (OSError, ValueError):
                 self._recipients = {}
 
     def _save(self) -> None:
@@ -75,9 +75,9 @@ class EmailTracker:
         try:
             import pandas as pd
 
-            df = pd.read_csv(path, low_memory=False)
+            df = pd.read_csv(path, low_memory=False, encoding="utf-8")
             df.columns = df.columns.str.lower().str.strip()
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"[email_tracker] Cannot read CSV: {e}")
             return 0, 0
 

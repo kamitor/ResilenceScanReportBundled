@@ -2,9 +2,10 @@
 Tests for multi-format import support in convert_data.py.
 
 Covers: _SUPPORTED_EXTENSIONS, _read_source dispatcher, _read_xml,
-_read_raw_csv, convert_and_save with explicit path, and _find_source_file.
+_read_raw_csv, _read_json, convert_and_save with explicit path, and _find_source_file.
 """
 
+import json
 import pathlib
 import shutil
 import sys
@@ -14,6 +15,10 @@ import pandas as pd
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "sample_anonymized.xlsx"
+FIXTURE_JSON = ROOT / "tests" / "fixtures" / "sample_survey.json"
+FIXTURE_JSON_NESTED = ROOT / "tests" / "fixtures" / "sample_survey_nested.json"
+FIXTURE_JSONL = ROOT / "tests" / "fixtures" / "sample_survey.jsonl"
+FIXTURE_XLS = ROOT / "tests" / "fixtures" / "sample_survey.xls"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -28,7 +33,17 @@ def test_supported_extensions_constant():
     """All expected extensions must be present in _SUPPORTED_EXTENSIONS."""
     import convert_data
 
-    expected = {".xlsx", ".xls", ".ods", ".xml", ".csv", ".tsv"}
+    expected = {
+        ".xlsx",
+        ".xlsm",
+        ".xls",
+        ".ods",
+        ".xml",
+        ".json",
+        ".jsonl",
+        ".csv",
+        ".tsv",
+    }
     assert expected <= set(convert_data._SUPPORTED_EXTENSIONS), (
         f"Missing extensions: {expected - set(convert_data._SUPPORTED_EXTENSIONS)}"
     )
@@ -216,3 +231,539 @@ def test_find_source_file_returns_none_when_empty(tmp_path):
 
     result = convert_data._find_source_file(tmp_path)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _is_spreadsheetml
+# ---------------------------------------------------------------------------
+
+_SPREADSHEETML_HEADER = (
+    b'<?xml version="1.0" encoding="UTF-8"?>'
+    b'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">'
+    b"</Workbook>"
+)
+
+
+def test_is_spreadsheetml_detects_xml_xls(tmp_path):
+    """_is_spreadsheetml should return True for a SpreadsheetML XML file with .xls extension."""
+    import convert_data
+
+    f = tmp_path / "export.xls"
+    f.write_bytes(_SPREADSHEETML_HEADER)
+    assert convert_data._is_spreadsheetml(f) is True
+
+
+def test_is_spreadsheetml_rejects_real_xls(tmp_path):
+    """_is_spreadsheetml should return False for a binary XLS file."""
+    import convert_data
+
+    f = tmp_path / "binary.xls"
+    f.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")  # OLE2 magic bytes
+    assert convert_data._is_spreadsheetml(f) is False
+
+
+def test_is_spreadsheetml_rejects_xlsx(tmp_path):
+    """_is_spreadsheetml should return False for .xlsx files (wrong extension)."""
+    import convert_data
+
+    f = tmp_path / "export.xlsx"
+    f.write_bytes(_SPREADSHEETML_HEADER)
+    assert convert_data._is_spreadsheetml(f) is False
+
+
+# ---------------------------------------------------------------------------
+# _read_spreadsheetml
+# ---------------------------------------------------------------------------
+
+_SPREADSHEETML_DOC = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Sheet1">
+    <Table>
+      <Row>
+        <Cell><Data ss:Type="String">date</Data></Cell>
+        <Cell><Data ss:Type="String">name</Data></Cell>
+        <Cell><Data ss:Type="String">email</Data></Cell>
+        <Cell><Data ss:Type="String">company-name</Data></Cell>
+        <Cell><Data ss:Type="String">score</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="String">2026-03-05</Data></Cell>
+        <Cell><Data ss:Type="String">Alice</Data></Cell>
+        <Cell><Data ss:Type="String">alice@example.com</Data></Cell>
+        <Cell><Data ss:Type="String">Acme Corp</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="String">2026-03-06</Data></Cell>
+        <Cell><Data ss:Type="String">Bob</Data></Cell>
+        <Cell><Data ss:Type="String">bob@example.com</Data></Cell>
+        <Cell><Data ss:Type="String">Beta Ltd</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+      </Row>
+    </Table>
+  </Worksheet>
+</Workbook>
+"""
+
+
+def test_read_spreadsheetml_returns_dataframe(tmp_path):
+    """_read_spreadsheetml should return a DataFrame with correct rows and columns."""
+    import convert_data
+
+    f = tmp_path / "export.xls"
+    f.write_text(_SPREADSHEETML_DOC, encoding="utf-8")
+    df = convert_data._read_spreadsheetml(f)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "name" in df.columns
+    assert set(df["name"].tolist()) == {"Alice", "Bob"}
+
+
+def test_read_spreadsheetml_preserves_all_columns(tmp_path):
+    """_read_spreadsheetml should include every column from the header row."""
+    import convert_data
+
+    f = tmp_path / "export.xls"
+    f.write_text(_SPREADSHEETML_DOC, encoding="utf-8")
+    df = convert_data._read_spreadsheetml(f)
+    assert {"date", "name", "email", "company-name", "score"} <= set(df.columns)
+
+
+def test_read_source_dispatches_to_spreadsheetml(tmp_path):
+    """_read_source should use _read_spreadsheetml for SpreadsheetML .xls files."""
+    import convert_data
+
+    f = tmp_path / "export.xls"
+    f.write_text(_SPREADSHEETML_DOC, encoding="utf-8")
+    df = convert_data._read_source(f)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+
+
+# ---------------------------------------------------------------------------
+# _apply_col_aliases
+# ---------------------------------------------------------------------------
+
+
+def test_apply_col_aliases_renames_date_and_email():
+    """_apply_col_aliases should rename 'date' -> 'submitdate' and 'email' -> 'email_address'."""
+    import convert_data
+
+    df = pd.DataFrame({"date": ["2026-01-01"], "email": ["a@b.com"], "name": ["X"]})
+    result = convert_data._apply_col_aliases(df)
+    assert "submitdate" in result.columns
+    assert "email_address" in result.columns
+    assert "date" not in result.columns
+    assert "email" not in result.columns
+
+
+def test_apply_col_aliases_no_clobber():
+    """_apply_col_aliases should not rename 'date' if 'submitdate' already exists."""
+    import convert_data
+
+    df = pd.DataFrame({"date": ["2026-01-01"], "submitdate": ["2026-01-02"]})
+    result = convert_data._apply_col_aliases(df)
+    assert "submitdate" in result.columns
+    assert "date" in result.columns  # not renamed — would clobber
+
+
+def test_apply_col_aliases_passthrough_if_no_match():
+    """_apply_col_aliases should leave columns unchanged when no alias matches."""
+    import convert_data
+
+    df = pd.DataFrame({"submitdate": ["2026-01-01"], "email_address": ["a@b.com"]})
+    result = convert_data._apply_col_aliases(df)
+    assert list(result.columns) == ["submitdate", "email_address"]
+
+
+# ---------------------------------------------------------------------------
+# _upsert_with_existing
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_new_records_appear_first(tmp_path):
+    """New records from new_df must be at the top of the merged result."""
+    import convert_data
+
+    existing = tmp_path / "cleaned_master.csv"
+    existing.write_text(
+        "email_address,name,reportsent\nold@x.com,Old Person,True\n",
+        encoding="utf-8",
+    )
+    new_df = pd.DataFrame(
+        {"email_address": ["new@x.com"], "name": ["New Person"], "reportsent": [False]}
+    )
+    result = convert_data._upsert_with_existing(new_df, existing)
+    assert result.iloc[0]["email_address"] == "new@x.com"
+    assert result.iloc[1]["email_address"] == "old@x.com"
+
+
+def test_upsert_old_only_records_retained(tmp_path):
+    """Rows in the existing CSV not in new_df must be appended after new rows."""
+    import convert_data
+
+    existing = tmp_path / "cleaned_master.csv"
+    existing.write_text(
+        "email_address,name,reportsent\na@x.com,Alice,False\nb@x.com,Bob,False\n",
+        encoding="utf-8",
+    )
+    new_df = pd.DataFrame({"email_address": ["c@x.com"], "name": ["Carol"]})
+    result = convert_data._upsert_with_existing(new_df, existing)
+    assert len(result) == 3
+    assert "c@x.com" in result["email_address"].values
+    assert "a@x.com" in result["email_address"].values
+    assert "b@x.com" in result["email_address"].values
+
+
+def test_upsert_reportsent_preserved_for_existing(tmp_path):
+    """reportsent must be restored from the existing CSV for matched records."""
+    import convert_data
+
+    existing = tmp_path / "cleaned_master.csv"
+    existing.write_text(
+        "email_address,name,reportsent\nalice@x.com,Alice,True\n",
+        encoding="utf-8",
+    )
+    # Re-import with reportsent=False (stale value from source)
+    new_df = pd.DataFrame(
+        {"email_address": ["alice@x.com"], "name": ["Alice"], "reportsent": [False]}
+    )
+    result = convert_data._upsert_with_existing(new_df, existing)
+    assert (
+        result.iloc[0]["reportsent"] is True
+        or str(result.iloc[0]["reportsent"]) == "True"
+    )
+
+
+def test_upsert_no_existing_csv_returns_new_df_unchanged(tmp_path):
+    """When no existing CSV is present, new_df is returned as-is."""
+    import convert_data
+
+    missing = tmp_path / "cleaned_master.csv"
+    new_df = pd.DataFrame({"email_address": ["a@x.com"], "name": ["Alice"]})
+    result = convert_data._upsert_with_existing(new_df, missing)
+    assert len(result) == 1
+    assert result.iloc[0]["email_address"] == "a@x.com"
+
+
+def test_upsert_matched_rows_not_duplicated(tmp_path):
+    """A row that appears in both new_df and the existing CSV must not be duplicated."""
+    import convert_data
+
+    existing = tmp_path / "cleaned_master.csv"
+    existing.write_text(
+        "email_address,name,reportsent\nalice@x.com,Alice,False\n",
+        encoding="utf-8",
+    )
+    new_df = pd.DataFrame(
+        {"email_address": ["alice@x.com"], "name": ["Alice"], "reportsent": [False]}
+    )
+    result = convert_data._upsert_with_existing(new_df, existing)
+    assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: SpreadsheetML file converted and upserted into existing CSV
+# ---------------------------------------------------------------------------
+
+
+def test_convert_and_save_spreadsheetml_upsert(tmp_path, monkeypatch):
+    """convert_and_save on a SpreadsheetML XLS with an existing CSV upserts correctly."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+
+    # Pre-existing CSV with one record
+    out_csv.write_text(
+        "submitdate,reportsent,name,email_address,company_name\n"
+        "2025-01-01,True,Existing Person,exist@example.com,Old Corp\n",
+        encoding="utf-8",
+    )
+
+    # SpreadsheetML file with one NEW record
+    xls = data_dir / "new_export.xls"
+    xls.write_text(_SPREADSHEETML_DOC, encoding="utf-8")
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    result = convert_data.convert_and_save(xls)
+    assert result is True
+
+    df = pd.read_csv(out_csv)
+    # New records first
+    assert df.iloc[0]["name"] in {"Alice", "Bob"}
+    # Old record retained
+    assert "Existing Person" in df["name"].values
+    # Total = 2 new + 1 old
+    assert len(df) == 3
+
+
+# ---------------------------------------------------------------------------
+# SpreadsheetML XLS fixture tests
+# ---------------------------------------------------------------------------
+
+
+def test_read_spreadsheetml_xls_fixture():
+    """_read_source on sample_survey.xls (SpreadsheetML) returns 2 rows."""
+    import convert_data
+
+    df = convert_data._read_source(FIXTURE_XLS)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "name" in df.columns
+    assert set(df["name"].tolist()) == {"Greta Fixture", "Hugo Sample"}
+
+
+def test_spreadsheetml_fixture_col_aliases(tmp_path, monkeypatch):
+    """convert_and_save on sample_survey.xls maps date→submitdate and email→email_address."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+    dest = data_dir / "sample_survey.xls"
+    shutil.copy(FIXTURE_XLS, dest)
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    assert convert_data.convert_and_save(dest) is True
+    df = pd.read_csv(out_csv)
+    assert "submitdate" in df.columns, "date should be aliased to submitdate"
+    assert "email_address" in df.columns, "email should be aliased to email_address"
+    assert "date" not in df.columns
+    assert "email" not in df.columns
+
+
+def test_spreadsheetml_fixture_company_name_normalized(tmp_path, monkeypatch):
+    """convert_and_save on sample_survey.xls normalises 'company-name' → 'company_name'."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+    dest = data_dir / "sample_survey.xls"
+    shutil.copy(FIXTURE_XLS, dest)
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    convert_data.convert_and_save(dest)
+    df = pd.read_csv(out_csv)
+    assert "company_name" in df.columns
+    assert "SpreadsheetML Corp" in df["company_name"].values
+
+
+def test_spreadsheetml_fixture_upsert_new_first(tmp_path, monkeypatch):
+    """Importing sample_survey.xls into an existing CSV puts new rows first."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+
+    # Pre-populate with one existing record
+    out_csv.write_text(
+        "submitdate,reportsent,name,email_address,company_name\n"
+        "2025-01-01,True,Old Person,old@example.com,Old Corp\n",
+        encoding="utf-8",
+    )
+
+    dest = data_dir / "sample_survey.xls"
+    shutil.copy(FIXTURE_XLS, dest)
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    assert convert_data.convert_and_save(dest) is True
+    df = pd.read_csv(out_csv)
+
+    assert len(df) == 3  # 2 new + 1 old
+    # New records appear first
+    assert df.iloc[0]["name"] in {"Greta Fixture", "Hugo Sample"}
+    assert df.iloc[1]["name"] in {"Greta Fixture", "Hugo Sample"}
+    # Old record retained at the end
+    assert df.iloc[2]["name"] == "Old Person"
+
+
+# ---------------------------------------------------------------------------
+# _read_json — fixture-based tests
+# ---------------------------------------------------------------------------
+
+
+def test_read_json_array_fixture():
+    """_read_json on a JSON array fixture returns 2 rows with expected columns."""
+    import convert_data
+
+    df = convert_data._read_json(FIXTURE_JSON)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "name" in df.columns
+    assert set(df["name"].tolist()) == {"Anna Sample", "Ben Fixture"}
+
+
+def test_read_json_nested_fixture():
+    """_read_json on a nested JSON fixture (responses key) returns 2 rows."""
+    import convert_data
+
+    df = convert_data._read_json(FIXTURE_JSON_NESTED)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "name" in df.columns
+    assert set(df["name"].tolist()) == {"Clara Nested", "David Wrapper"}
+
+
+def test_read_jsonl_fixture():
+    """_read_json on a .jsonl fixture returns 2 rows."""
+    import convert_data
+
+    df = convert_data._read_json(FIXTURE_JSONL)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "name" in df.columns
+    assert set(df["name"].tolist()) == {"Eve Jsonlines", "Frank Stream"}
+
+
+# ---------------------------------------------------------------------------
+# _read_json — inline unit tests (no fixture files)
+# ---------------------------------------------------------------------------
+
+
+def test_read_json_top_level_list(tmp_path):
+    """_read_json should parse a top-level JSON array."""
+    import convert_data
+
+    f = tmp_path / "data.json"
+    f.write_text(
+        json.dumps(
+            [
+                {"submitdate": "2026-01-01", "name": "Alice", "score": 3},
+                {"submitdate": "2026-01-02", "name": "Bob", "score": 4},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    df = convert_data._read_json(f)
+    assert len(df) == 2
+    assert set(df["name"].tolist()) == {"Alice", "Bob"}
+
+
+def test_read_json_responses_wrapper(tmp_path):
+    """_read_json should unwrap a {"responses": [...]} structure."""
+    import convert_data
+
+    f = tmp_path / "data.json"
+    f.write_text(
+        json.dumps(
+            {
+                "meta": {"count": 2},
+                "responses": [
+                    {"name": "Carol", "score": 5},
+                    {"name": "Dave", "score": 2},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    df = convert_data._read_json(f)
+    assert len(df) == 2
+    assert set(df["name"].tolist()) == {"Carol", "Dave"}
+
+
+def test_read_json_data_wrapper(tmp_path):
+    """_read_json should unwrap a {"data": [...]} structure."""
+    import convert_data
+
+    f = tmp_path / "data.json"
+    f.write_text(
+        json.dumps({"data": [{"name": "Eve"}, {"name": "Frank"}]}),
+        encoding="utf-8",
+    )
+    df = convert_data._read_json(f)
+    assert len(df) == 2
+
+
+def test_read_jsonl_inline(tmp_path):
+    """_read_json on a .jsonl file should read one JSON object per line."""
+    import convert_data
+
+    f = tmp_path / "data.jsonl"
+    lines = [
+        json.dumps({"submitdate": "2026-01-01", "name": "Grace", "score": 4}),
+        json.dumps({"submitdate": "2026-01-02", "name": "Hank", "score": 3}),
+    ]
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    df = convert_data._read_json(f)
+    assert len(df) == 2
+    assert set(df["name"].tolist()) == {"Grace", "Hank"}
+
+
+def test_read_source_dispatches_json(tmp_path):
+    """_read_source should dispatch .json files to _read_json."""
+    import convert_data
+
+    f = tmp_path / "data.json"
+    f.write_text(json.dumps([{"name": "Iris", "score": 5}]), encoding="utf-8")
+    df = convert_data._read_source(f)
+    assert isinstance(df, pd.DataFrame)
+    assert df.iloc[0]["name"] == "Iris"
+
+
+def test_read_source_dispatches_jsonl(tmp_path):
+    """_read_source should dispatch .jsonl files to _read_json."""
+    import convert_data
+
+    f = tmp_path / "data.jsonl"
+    f.write_text(json.dumps({"name": "Jack", "score": 3}) + "\n", encoding="utf-8")
+    df = convert_data._read_source(f)
+    assert isinstance(df, pd.DataFrame)
+    assert df.iloc[0]["name"] == "Jack"
+
+
+# ---------------------------------------------------------------------------
+# convert_and_save with JSON fixtures
+# ---------------------------------------------------------------------------
+
+
+def test_convert_and_save_json_array(tmp_path, monkeypatch):
+    """convert_and_save on a JSON array fixture produces a valid CSV."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+    dest = data_dir / "sample_survey.json"
+    shutil.copy(FIXTURE_JSON, dest)
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    assert convert_data.convert_and_save(dest) is True
+    df = pd.read_csv(out_csv)
+    assert len(df) == 2
+    assert "reportsent" in df.columns
+    assert set(df["name"].tolist()) == {"Anna Sample", "Ben Fixture"}
+
+
+def test_convert_and_save_jsonl(tmp_path, monkeypatch):
+    """convert_and_save on a JSONL fixture produces a valid CSV."""
+    import convert_data
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    out_csv = data_dir / "cleaned_master.csv"
+    dest = data_dir / "sample_survey.jsonl"
+    shutil.copy(FIXTURE_JSONL, dest)
+
+    monkeypatch.setattr(convert_data, "OUTPUT_PATH", out_csv)
+    monkeypatch.setattr(convert_data, "DATA_DIR", data_dir)
+
+    assert convert_data.convert_and_save(dest) is True
+    df = pd.read_csv(out_csv)
+    assert len(df) == 2
+    assert set(df["name"].tolist()) == {"Eve Jsonlines", "Frank Stream"}
