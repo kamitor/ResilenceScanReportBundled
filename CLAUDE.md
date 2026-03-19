@@ -163,82 +163,10 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 | M56 | GUI visual upgrade: modern ttk theme, improved layout, spacing, typography |
 | M57 | Email sender configuration: per-send "From" address selection, multiple sender profiles |
 
-**Current version: v0.21.51 — 268 tests, ruff clean**
+**Current version: v0.21.57 — 268 tests, ruff clean**
 
 ---
 
 ## Active milestones
 
-### M52 — Thread safety + resource leaks
-
-| Task | Finding | File | Fix |
-|---|---|---|---|
-| T1 | 1.1 | gui_quality.py:120–139, 167–191 | Wrap all widget/messagebox calls in `root.after(0, ...)` |
-| T2 | 1.2 | email_tracker.py | Add `threading.Lock`; acquire in every method touching `_recipients` or `_save()` |
-| T3 | 1.3 | gui_logs.py:63–67 | Add module-level `_LOG_LOCK`; acquire around file write |
-| T4 | 2.1 | gui_email_send.py:739–741 | Wrap `server.quit()` in `try/except`; call `server.close()` on failure |
-| T5 | 4.1 | convert_data.py:152, 160 | Use `with pd.ExcelFile(...) as xl:` context manager in `_read_xls` and `_read_ods` |
-
-Gate: `ruff check .` clean, `pytest` 268+ pass, no new warnings.
-
-### M53 — Security: keyring credential storage
-
-| Task | Finding | File | Fix |
-|---|---|---|---|
-| T1 | 3.1 | gui_email_template.py:226, 257–258 | Replace plaintext password in config.yml with `keyring`; migrate on first load |
-
-Gate: password absent from `config.yml`; save/load round-trip works on Linux and Windows.
-
-### M54 — Code quality quick wins
-
-| Task | Finding | File | Fix |
-|---|---|---|---|
-| T1 | 5.1 | gui_email_send.py:461–479 | Extract `_find_row(df, company, person) → Series \| None` helper |
-| T2 | 5.2 | convert_data.py:128–130 | `_cell_text` returns `""` not `None` |
-| T3 | 5.3 | gui_email_send.py:~824 | Add `TEST_MODE_LABEL` to `utils/constants.py` |
-
-Gate: `ruff check .` clean, `pytest` 268+ pass.
-
-### M55 — GUI audit: remove dead controls
-
-The GUI audit (2026-03-19) confirmed all 41+ buttons are implemented, but two
-buttons in `gui_quality.py` invoke scripts that do not exist in the repo:
-
-| Task | File | Issue | Fix |
-|---|---|---|---|
-| T1 | gui_quality.py:112 | "Run Quality Dashboard" calls `data_quality_dashboard.py` — missing | Remove button and `run_quality_dashboard()` method, or implement the script |
-| T2 | gui_quality.py:160 | "Run Data Cleaner" calls `clean_data_enhanced.py` — missing | Remove button and `run_data_cleaner()` method, or implement the script |
-| T3 | gui_quality.py / gui_data.py | Remove `QualityMixin` if all its public methods are removed | Clean up mixin wiring in main.py if needed |
-
-Decision: **remove** both buttons/methods (scripts do not exist and are not planned).
-If the scripts are added later, the buttons can be re-introduced.
-
-Gate: `ruff check .` clean, `pytest` 268+ pass, no dead imports.
-
-### M56 — GUI visual upgrade
-
-Replace the default Tk appearance with a modern, consistent look.
-
-| Task | Details |
-|---|---|
-| T1 | Add `sv-ttk` (Sun Valley theme) or `ttkthemes` to `requirements.txt` and apply at startup |
-| T2 | Standardise padding/spacing across all tabs (consistent `padx`/`pady`) |
-| T3 | Improve typography: use a single readable font throughout, not mixed `Courier`/default |
-| T4 | Improve progress bars, labels, and button sizing for visual hierarchy |
-| T5 | Dashboard tab: card-style status widgets instead of plain labels |
-
-Gate: App launches, all existing tests pass, visual review on both Linux and Windows.
-
-### M57 — Email sender configuration
-
-Allow the user to choose which email address to send from before starting a send run.
-
-| Task | Details |
-|---|---|
-| T1 | Add a "From address" dropdown/entry to the Email Send tab, pre-filled from SMTP config |
-| T2 | Support multiple named sender profiles in `config.yml` (e.g. "School A", "School B") with different `from_address`/`username`/`password` |
-| T3 | Selected profile is passed through to `_send_emails_impl` and used for both Outlook (set sender) and SMTP (`From:` header) |
-| T4 | Profile management UI in the Email Template tab: add / rename / delete profiles |
-| T5 | Keyring stores password per profile (after M53) |
-
-Gate: Can configure ≥2 profiles, switch between them in the Send tab, and emails reflect the correct From address.
+All milestones M1–M57 complete.
