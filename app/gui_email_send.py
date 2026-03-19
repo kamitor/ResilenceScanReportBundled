@@ -143,6 +143,27 @@ class EmailSendMixin:
         controls_frame = ttk.LabelFrame(parent, text="Email Controls", padding=10)
         controls_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=10, pady=10)
 
+        # Sender identity (reflects current SMTP profile)
+        ttk.Label(controls_frame, text="Sending from:").grid(
+            row=0, column=0, sticky=tk.W, pady=(5, 2)
+        )
+        sender_row = ttk.Frame(controls_frame)
+        sender_row.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=10, pady=(5, 2))
+        # smtp_from_var is defined in EmailTemplateMixin — display it as readonly
+        ttk.Entry(
+            sender_row,
+            textvariable=self.smtp_from_var,
+            state="readonly",
+            width=38,
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            sender_row, text="(change in Email Settings tab)", foreground="gray"
+        ).pack(side=tk.LEFT, padx=6)
+
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).grid(
+            row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4
+        )
+
         # Test mode
         self.test_mode_var = tk.BooleanVar(value=True)
         test_check = ttk.Checkbutton(
@@ -151,12 +172,12 @@ class EmailSendMixin:
             variable=self.test_mode_var,
             command=self.toggle_test_mode,
         )
-        test_check.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=5)
+        test_check.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=5)
 
-        ttk.Label(controls_frame, text="Test Email:").grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(controls_frame, text="Test Email:").grid(row=3, column=0, sticky=tk.W)
         self.test_email_var = tk.StringVar(value="")
         ttk.Entry(controls_frame, textvariable=self.test_email_var, width=40).grid(
-            row=1, column=1, sticky=(tk.W, tk.E), padx=10
+            row=3, column=1, sticky=(tk.W, tk.E), padx=10
         )
 
         controls_frame.columnconfigure(1, weight=1)

@@ -117,51 +117,83 @@ class EmailTemplateMixin:
         )
         smtp_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=10, pady=10)
 
+        # ── Sender profile selector ──────────────────────────────────────
+        ttk.Label(smtp_frame, text="Sender Profile:").grid(
+            row=0, column=0, sticky=tk.W, pady=5
+        )
+        profile_row = ttk.Frame(smtp_frame)
+        profile_row.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
+
+        self._smtp_profiles: list[dict] = []  # in-memory list from config.yml
+        self.smtp_profile_var = tk.StringVar()
+        self._profile_combo = ttk.Combobox(
+            profile_row,
+            textvariable=self.smtp_profile_var,
+            state="readonly",
+            width=30,
+        )
+        self._profile_combo.pack(side=tk.LEFT)
+        self._profile_combo.bind("<<ComboboxSelected>>", self._on_profile_selected)
+
+        ttk.Button(
+            profile_row, text="Load", command=self._load_selected_profile, width=7
+        ).pack(side=tk.LEFT, padx=(6, 2))
+        ttk.Button(
+            profile_row, text="Save as…", command=self._save_as_profile, width=9
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            profile_row, text="Delete", command=self._delete_profile, width=7
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(smtp_frame, orient=tk.HORIZONTAL).grid(
+            row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=6
+        )
+
+        # ── Individual SMTP fields ───────────────────────────────────────
         # SMTP Server
         ttk.Label(smtp_frame, text="SMTP Server:").grid(
-            row=0, column=0, sticky=tk.W, pady=5
+            row=2, column=0, sticky=tk.W, pady=5
         )
         self.smtp_server_var = tk.StringVar(value="smtp.office365.com")
         ttk.Entry(smtp_frame, textvariable=self.smtp_server_var, width=40).grid(
-            row=0, column=1, sticky=(tk.W, tk.E), padx=10, pady=5
+            row=2, column=1, sticky=(tk.W, tk.E), padx=10, pady=5
         )
 
         # SMTP Port
         ttk.Label(smtp_frame, text="SMTP Port:").grid(
-            row=1, column=0, sticky=tk.W, pady=5
+            row=3, column=0, sticky=tk.W, pady=5
         )
         self.smtp_port_var = tk.StringVar(value="587")
         ttk.Entry(smtp_frame, textvariable=self.smtp_port_var, width=10).grid(
-            row=1, column=1, sticky=tk.W, padx=10, pady=5
+            row=3, column=1, sticky=tk.W, padx=10, pady=5
         )
 
         # From Email
         ttk.Label(smtp_frame, text="From Email:").grid(
-            row=2, column=0, sticky=tk.W, pady=5
+            row=4, column=0, sticky=tk.W, pady=5
         )
         self.smtp_from_var = tk.StringVar(value="info@resiliencescan.org")
-        from_entry = ttk.Entry(
-            smtp_frame, textvariable=self.smtp_from_var, width=40, state="readonly"
+        ttk.Entry(smtp_frame, textvariable=self.smtp_from_var, width=40).grid(
+            row=4, column=1, sticky=(tk.W, tk.E), padx=10, pady=5
         )
-        from_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
 
         # SMTP Username
         ttk.Label(smtp_frame, text="SMTP Username:").grid(
-            row=3, column=0, sticky=tk.W, pady=5
+            row=5, column=0, sticky=tk.W, pady=5
         )
         self.smtp_username_var = tk.StringVar(value="")
         ttk.Entry(smtp_frame, textvariable=self.smtp_username_var, width=40).grid(
-            row=3, column=1, sticky=(tk.W, tk.E), padx=10, pady=5
+            row=5, column=1, sticky=(tk.W, tk.E), padx=10, pady=5
         )
 
         # SMTP Password
         ttk.Label(smtp_frame, text="SMTP Password:").grid(
-            row=4, column=0, sticky=tk.W, pady=5
+            row=6, column=0, sticky=tk.W, pady=5
         )
         self.smtp_password_var = tk.StringVar(value="")
         ttk.Entry(
             smtp_frame, textvariable=self.smtp_password_var, width=40, show="*"
-        ).grid(row=4, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
+        ).grid(row=6, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
 
         # Help text
         help_text = (
@@ -170,12 +202,12 @@ class EmailTemplateMixin:
             "Outlook.com: smtp-mail.outlook.com:587"
         )
         ttk.Label(
-            smtp_frame, text=help_text, font=("Arial", 8), foreground="gray"
-        ).grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=5)
+            smtp_frame, text=help_text, font=("Segoe UI", 8), foreground="gray"
+        ).grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=5)
 
         ttk.Button(
             smtp_frame, text="Save Configuration", command=self.save_config
-        ).grid(row=6, column=0, columnspan=2, sticky=tk.W, pady=5)
+        ).grid(row=8, column=0, columnspan=2, sticky=tk.W, pady=5)
 
         smtp_frame.columnconfigure(1, weight=1)
 
@@ -210,15 +242,154 @@ class EmailTemplateMixin:
     # Config
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Profile helpers
+    # ------------------------------------------------------------------
+
+    def _profile_keyring_key(self, profile_name: str) -> str:
+        """Return the keyring service name for a profile."""
+        return f"{_KEYRING_SERVICE}__{profile_name}"
+
+    def _store_profile_password(
+        self, profile_name: str, username: str, password: str
+    ) -> None:
+        if keyring is not None and username and password:
+            try:
+                keyring.set_password(
+                    self._profile_keyring_key(profile_name), username, password
+                )
+            except Exception as kr_err:
+                self.log(
+                    f"[WARNING] keyring unavailable: {kr_err} — password not saved"
+                )
+
+    def _load_profile_password(self, profile_name: str, username: str) -> str:
+        if keyring is not None and username:
+            try:
+                return (
+                    keyring.get_password(
+                        self._profile_keyring_key(profile_name), username
+                    )
+                    or ""
+                )
+            except Exception:
+                pass
+        return ""
+
+    def _refresh_profile_combo(self) -> None:
+        names = [p["name"] for p in self._smtp_profiles]
+        self._profile_combo["values"] = names
+        if names and not self.smtp_profile_var.get():
+            self.smtp_profile_var.set(names[0])
+
+    def _on_profile_selected(self, _event=None) -> None:
+        self._load_selected_profile()
+
+    def _load_selected_profile(self) -> None:
+        name = self.smtp_profile_var.get()
+        profile = next((p for p in self._smtp_profiles if p["name"] == name), None)
+        if profile is None:
+            return
+        self.smtp_server_var.set(profile.get("server", ""))
+        self.smtp_port_var.set(str(profile.get("port", 587)))
+        self.smtp_from_var.set(profile.get("from_address", ""))
+        username = profile.get("username", "")
+        self.smtp_username_var.set(username)
+        password = self._load_profile_password(name, username)
+        self.smtp_password_var.set(password)
+        self.log(f"[INFO] Loaded sender profile: {name}")
+
+    def _save_as_profile(self) -> None:
+        from tkinter.simpledialog import askstring
+
+        name = askstring(
+            "Save Profile",
+            "Profile name:",
+            initialvalue=self.smtp_profile_var.get() or "Default",
+            parent=self.root,
+        )
+        if not name:
+            return
+        try:
+            port = int(self.smtp_port_var.get() or 587)
+        except ValueError:
+            messagebox.showerror("Invalid Port", "SMTP port must be a number.")
+            return
+        username = self.smtp_username_var.get()
+        password = self.smtp_password_var.get()
+        profile = {
+            "name": name,
+            "server": self.smtp_server_var.get(),
+            "port": port,
+            "from_address": self.smtp_from_var.get(),
+            "username": username,
+        }
+        # Replace existing profile with same name or append
+        existing = next(
+            (i for i, p in enumerate(self._smtp_profiles) if p["name"] == name), None
+        )
+        if existing is not None:
+            self._smtp_profiles[existing] = profile
+        else:
+            self._smtp_profiles.append(profile)
+        self._store_profile_password(name, username, password)
+        self._refresh_profile_combo()
+        self.smtp_profile_var.set(name)
+        self._write_config()
+        messagebox.showinfo("Saved", f"Profile '{name}' saved.")
+
+    def _delete_profile(self) -> None:
+        name = self.smtp_profile_var.get()
+        if not name:
+            return
+        if not messagebox.askyesno("Delete Profile", f"Delete profile '{name}'?"):
+            return
+        self._smtp_profiles = [p for p in self._smtp_profiles if p["name"] != name]
+        self._refresh_profile_combo()
+        if self._smtp_profiles:
+            self.smtp_profile_var.set(self._smtp_profiles[0]["name"])
+        else:
+            self.smtp_profile_var.set("")
+        self._write_config()
+
+    def _write_config(self) -> None:
+        """Persist smtp_profiles (and legacy smtp key) to config.yml."""
+        if yaml is None:
+            return
+        try:
+            data: dict = {}
+            if CONFIG_FILE.exists():
+                data = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8")) or {}
+            data["smtp_profiles"] = self._smtp_profiles
+            # Keep legacy smtp key in sync with current active profile fields
+            # so that old code that reads smtp: still works.
+            data["smtp"] = {
+                "server": self.smtp_server_var.get(),
+                "port": int(self.smtp_port_var.get() or 587),
+                "from_address": self.smtp_from_var.get(),
+                "username": self.smtp_username_var.get(),
+            }
+            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CONFIG_FILE.write_text(
+                yaml.dump(data, default_flow_style=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            self.log(f"[WARNING] Could not write config.yml: {e}")
+
+    # ------------------------------------------------------------------
+    # Config save / load
+    # ------------------------------------------------------------------
+
     def save_config(self):
-        """Save SMTP settings from GUI fields to config.yml."""
+        """Save current SMTP fields to config.yml and keyring."""
         if yaml is None:
             messagebox.showerror(
                 "Error", "PyYAML is not installed — cannot save configuration."
             )
             return
         try:
-            port = int(self.smtp_port_var.get() or 587)
+            int(self.smtp_port_var.get() or 587)
         except ValueError:
             messagebox.showerror(
                 "Invalid Port", "SMTP port must be a number (e.g. 587)."
@@ -226,36 +397,14 @@ class EmailTemplateMixin:
             return
         username = self.smtp_username_var.get()
         password = self.smtp_password_var.get()
-        data = {
-            "smtp": {
-                "server": self.smtp_server_var.get(),
-                "port": port,
-                "from_address": self.smtp_from_var.get(),
-                "username": username,
-                # password stored in OS credential store, not here
-            }
-        }
-        try:
-            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            CONFIG_FILE.write_text(
-                yaml.dump(data, default_flow_style=False, allow_unicode=True),
-                encoding="utf-8",
-            )
-            # Store password in OS credential store (keyring); fall back to
-            # a note in the YAML if keyring is unavailable on this platform.
-            if keyring is not None and username and password:
-                try:
-                    keyring.set_password(_KEYRING_SERVICE, username, password)
-                except Exception as kr_err:
-                    self.log(
-                        f"[WARNING] keyring unavailable: {kr_err} — password not saved"
-                    )
-            messagebox.showinfo("Saved", f"Configuration saved to:\n{CONFIG_FILE}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not save configuration:\n{e}")
+        # Persist password to keyring using the active profile name (or "Default")
+        profile_name = self.smtp_profile_var.get() or "Default"
+        self._store_profile_password(profile_name, username, password)
+        self._write_config()
+        messagebox.showinfo("Saved", f"Configuration saved to:\n{CONFIG_FILE}")
 
     def load_config(self):
-        """Load SMTP settings from config.yml into GUI fields."""
+        """Load SMTP settings and profiles from config.yml into GUI fields."""
         if yaml is None:
             self.log("[WARNING] PyYAML not installed — cannot load config.yml")
             return
@@ -263,47 +412,59 @@ class EmailTemplateMixin:
             return
         try:
             data = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8")) or {}
-            smtp = data.get("smtp", {})
-            if smtp.get("server"):
-                self.smtp_server_var.set(smtp["server"])
-            if smtp.get("port"):
-                self.smtp_port_var.set(str(smtp["port"]))
-            if smtp.get("from_address"):
-                self.smtp_from_var.set(smtp["from_address"])
-            username = smtp.get("username", "")
-            if username:
-                self.smtp_username_var.set(username)
 
-            # Load password: prefer keyring; fall back to legacy plaintext field
-            # and migrate it to keyring on first load.
-            password = ""
-            if keyring is not None and username:
-                try:
-                    password = keyring.get_password(_KEYRING_SERVICE, username) or ""
-                except Exception:
-                    password = ""
-            if not password and smtp.get("password"):
-                # Legacy plaintext — migrate to keyring and remove from YAML
-                password = smtp["password"]
-                if keyring is not None and username and password:
-                    try:
-                        keyring.set_password(_KEYRING_SERVICE, username, password)
-                        # Rewrite config without the password key
-                        smtp_clean = {k: v for k, v in smtp.items() if k != "password"}
-                        data["smtp"] = smtp_clean
-                        CONFIG_FILE.write_text(
-                            yaml.dump(
-                                data, default_flow_style=False, allow_unicode=True
-                            ),
-                            encoding="utf-8",
-                        )
-                        self.log(
-                            "[INFO] SMTP password migrated from config.yml to OS credential store"
-                        )
-                    except Exception as kr_err:
-                        self.log(f"[WARNING] keyring migration failed: {kr_err}")
-            if password:
-                self.smtp_password_var.set(password)
+            # ── Load profiles list ───────────────────────────────────────
+            self._smtp_profiles = data.get("smtp_profiles", [])
+
+            # Migrate legacy smtp: block into a "Default" profile if no profiles yet
+            smtp = data.get("smtp", {})
+            if not self._smtp_profiles and smtp:
+                self._smtp_profiles = [
+                    {
+                        "name": "Default",
+                        "server": smtp.get("server", ""),
+                        "port": smtp.get("port", 587),
+                        "from_address": smtp.get("from_address", ""),
+                        "username": smtp.get("username", ""),
+                    }
+                ]
+
+            self._refresh_profile_combo()
+
+            # ── Populate fields from first profile / legacy smtp block ───
+            if self._smtp_profiles:
+                first = self._smtp_profiles[0]
+                self.smtp_profile_var.set(first["name"])
+                self.smtp_server_var.set(first.get("server", ""))
+                self.smtp_port_var.set(str(first.get("port", 587)))
+                self.smtp_from_var.set(first.get("from_address", ""))
+                username = first.get("username", "")
+                self.smtp_username_var.set(username)
+                password = self._load_profile_password(first["name"], username)
+                # Fall back to legacy plaintext and migrate
+                if not password and smtp.get("password"):
+                    password = smtp["password"]
+                    self._store_profile_password(first["name"], username, password)
+                    smtp_clean = {k: v for k, v in smtp.items() if k != "password"}
+                    data["smtp"] = smtp_clean
+                    CONFIG_FILE.write_text(
+                        yaml.dump(data, default_flow_style=False, allow_unicode=True),
+                        encoding="utf-8",
+                    )
+                    self.log("[INFO] SMTP password migrated to OS credential store")
+                if password:
+                    self.smtp_password_var.set(password)
+            elif smtp:
+                # Legacy path — no profiles, just smtp block
+                if smtp.get("server"):
+                    self.smtp_server_var.set(smtp["server"])
+                if smtp.get("port"):
+                    self.smtp_port_var.set(str(smtp["port"]))
+                if smtp.get("from_address"):
+                    self.smtp_from_var.set(smtp["from_address"])
+                username = smtp.get("username", "")
+                if username:
+                    self.smtp_username_var.set(username)
 
             # Load Outlook account priority list (empty list = use default account)
             self.outlook_accounts = data.get("outlook_accounts", [])
