@@ -33,3 +33,6 @@ SMTP_TIMEOUT_SECONDS = 30  # SMTP connection timeout
 
 # Filename fallback when name is missing
 UNKNOWN_NAME_PLACEHOLDER = "Unknown"
+
+# Email send mode label shown in logs and summary dialogs
+TEST_MODE_LABEL = "[TEST MODE]"

@@ -125,9 +125,9 @@ def _read_spreadsheetml(path: Path) -> pd.DataFrame:
     if not rows:
         raise ValueError(f"No rows found in SpreadsheetML file: {path}")
 
-    def _cell_text(cell: ET.Element) -> str | None:
+    def _cell_text(cell: ET.Element) -> str:
         data = cell.find(f"{ns}Data")
-        return data.text if data is not None else None
+        return data.text or "" if data is not None else ""
 
     headers = [_cell_text(c) for c in rows[0].findall(f"{ns}Cell")]
     records = []

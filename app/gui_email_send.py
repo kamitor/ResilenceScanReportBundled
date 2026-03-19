@@ -13,7 +13,18 @@ from tkinter import messagebox, scrolledtext, ttk
 import pandas as pd
 
 from app.app_paths import DATA_FILE
-from utils.constants import SMTP_TIMEOUT_SECONDS
+from utils.constants import SMTP_TIMEOUT_SECONDS, TEST_MODE_LABEL
+
+
+def _find_row(df: "pd.DataFrame | None", company: str, person: str):
+    """Return the first matching row Series, or None if not found."""
+    if df is None:
+        return None
+    matches = df[
+        (df["company_name"].str.strip() == company.strip())
+        & (df["name"].str.strip() == person.strip())
+    ]
+    return matches.iloc[0] if not matches.empty else None
 
 
 class EmailSendMixin:
@@ -458,25 +469,14 @@ class EmailSendMixin:
                 if content and " - " in content:
                     company, person = content.rsplit(" - ", 1)
 
-                    # Look up email address from CSV snapshot (captured on main thread)
-                    email = ""
-                    if df_snap is not None:
-                        matches = df_snap[
-                            (df_snap["company_name"].str.strip() == company.strip())
-                            & (df_snap["name"].str.strip() == person.strip())
-                        ]
-                        if not matches.empty:
-                            email = matches.iloc[0].get("email_address", "")
-
-                    # Check if already sent (from CSV reportsent column)
-                    is_sent = False
-                    if df_snap is not None and "reportsent" in df_snap.columns:
-                        matches = df_snap[
-                            (df_snap["company_name"].str.strip() == company.strip())
-                            & (df_snap["name"].str.strip() == person.strip())
-                        ]
-                        if not matches.empty:
-                            is_sent = matches.iloc[0].get("reportsent", False)
+                    # Look up email and sent-status from CSV snapshot in one pass
+                    row = _find_row(df_snap, company, person)
+                    email = row.get("email_address", "") if row is not None else ""
+                    is_sent = (
+                        row.get("reportsent", False)
+                        if row is not None and "reportsent" in df_snap.columns
+                        else False
+                    )
 
                     # Only add if not sent yet
                     if not is_sent:
@@ -824,7 +824,7 @@ class EmailSendMixin:
             self.update_stats_display()
 
             # Show final summary dialog
-            test_mode_str = " [TEST MODE]" if test_mode else ""
+            test_mode_str = f" {TEST_MODE_LABEL}" if test_mode else ""
             summary_message = (
                 f"Email Distribution Complete{test_mode_str}\n\n"
                 f"[OK] Successfully sent: {sent_count}\n"
