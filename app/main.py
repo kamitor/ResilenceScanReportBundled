@@ -45,8 +45,8 @@ class ResilienceScanGUI(
         self.root = root
         from update_checker import _current_version
 
-        _APP_VERSION = _current_version()
-        self.root.title(f"ResilienceScan Control Center  v{_APP_VERSION}")
+        self._app_version = _current_version()
+        self.root.title(f"ResilienceScan Control Center  v{self._app_version}")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 600)
 
@@ -144,11 +144,9 @@ class ResilienceScanGUI(
         )
         title_label.grid(row=0, column=0, sticky=tk.W)
 
-        from update_checker import _current_version
-
         subtitle_label = ttk.Label(
             header_frame,
-            text=f"Supply Chain Resilience Assessment Management System  \u2022  v{_current_version()}",
+            text=f"Supply Chain Resilience Assessment Management System  \u2022  v{self._app_version}",
             font=("Segoe UI", 9),
         )
         subtitle_label.grid(row=1, column=0, sticky=tk.W)

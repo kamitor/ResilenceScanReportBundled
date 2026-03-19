@@ -88,7 +88,7 @@ class DataCleaningValidator:
         print("[INFO] COLUMN VALIDATION")
         print("=" * 70)
 
-        df_cols_lower = [col.lower() for col in df.columns]
+        df_cols_lower = {col.lower() for col in df.columns}
         missing_required = []
 
         for req_col in REQUIRED_COLUMNS:

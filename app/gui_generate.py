@@ -303,7 +303,7 @@ class GenerationMixin:
                     "File Exists",
                     f"Report already exists:\n{output_filename}\n\nOverwrite?",
                 )
-                if not response:
+                if response is not True:
                     self.log_gen("[INFO] Generation cancelled - file already exists")
                     return
 
@@ -787,6 +787,7 @@ class GenerationMixin:
             except Exception as e:
                 failed += 1
                 self.log_gen(f"  [ERROR] Error: {e}")
+            finally:
                 _i, _s, _f, _sk = idx + 1, success, failed, skipped
                 self.root.after(
                     0,

@@ -48,7 +48,7 @@ class EmailSendMixin:
         self.email_stats_label = ttk.Label(
             stats_row,
             text="Total: 0 | Pending: 0 | Sent: 0 | Failed: 0",
-            font=("Arial", 10, "bold"),
+            font=("Segoe UI", 10, "bold"),
         )
         self.email_stats_label.pack(side=tk.LEFT, padx=5)
 
@@ -316,7 +316,13 @@ class EmailSendMixin:
         # CHECK 4: If test mode is enabled, validate test email address
         if self.test_mode_var.get():
             test_email = self.test_email_var.get().strip()
-            if not test_email or "@" not in test_email:
+            _parts = test_email.split("@")
+            if (
+                len(_parts) != 2
+                or not _parts[0]
+                or not _parts[1]
+                or "." not in _parts[1]
+            ):
                 messagebox.showerror(
                     "Invalid Test Email",
                     "Test mode is enabled but the test email address is invalid.\n\n"
@@ -492,6 +498,10 @@ class EmailSendMixin:
 
                     # Look up email and sent-status from CSV snapshot in one pass
                     row = _find_row(df_snap, company, person)
+                    if row is None:
+                        self.log_email(
+                            f"[WARN] No CSV record found for {company} – {person}; email will be blank"
+                        )
                     email = row.get("email_address", "") if row is not None else ""
                     is_sent = (
                         row.get("reportsent", False)
