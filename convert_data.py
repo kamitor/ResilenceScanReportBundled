@@ -395,9 +395,7 @@ def _upsert_with_existing(new_df: pd.DataFrame, existing_path: Path) -> pd.DataF
             new_df["reportsent"] = False
         key_to_sent = dict(zip(old_keys, old_df["reportsent"]))
         restored = new_keys.map(key_to_sent)
-        new_df["reportsent"] = restored.fillna(new_df["reportsent"]).infer_objects(
-            copy=False
-        )
+        new_df["reportsent"] = restored.fillna(new_df["reportsent"]).astype(bool)
 
     # Append old rows that are not represented in new_df
     new_key_set = set(new_keys.tolist())
