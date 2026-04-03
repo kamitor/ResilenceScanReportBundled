@@ -2,7 +2,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/Windesheim-A-I-Support/ResilenceScanReportBuilder?label=latest)](https://github.com/Windesheim-A-I-Support/ResilenceScanReportBuilder/releases/latest)
 
-A Windows/Linux desktop application that generates personalised PDF resilience reports for survey respondents and distributes them by email.  Built with Python (Tkinter GUI) + R + Quarto + TinyTeX.
+A Windows, Linux, and macOS desktop application that generates personalised PDF resilience reports for survey respondents and distributes them by email.  Built with Python (Tkinter GUI) + R + Quarto + TinyTeX.
 
 ---
 
@@ -16,6 +16,7 @@ A Windows/Linux desktop application that generates personalised PDF resilience r
 | Linux | [.deb (Ubuntu/Debian)](https://github.com/Windesheim-A-I-Support/ResilenceScanReportBuilder/releases/download/v0.21.61/ResilenceScanReportBuilder-0.21.61-amd64.deb) |
 | Linux | [AppImage](https://github.com/Windesheim-A-I-Support/ResilenceScanReportBuilder/releases/download/v0.21.61/ResilenceScanReportBuilder-0.21.61-x86_64.AppImage) |
 | Linux | [Tarball (.tar.gz)](https://github.com/Windesheim-A-I-Support/ResilenceScanReportBuilder/releases/download/v0.21.61/ResilenceScanReportBuilder-0.21.61-linux-amd64.tar.gz) |
+| macOS | [macOS DMG (Apple Silicon)](https://github.com/Windesheim-A-I-Support/ResilenceScanReportBuilder/releases/download/v0.21.61/ResilenceScanReportBuilder-0.21.61-macos-arm64.dmg) |
 <!-- DOWNLOAD_LINKS_END -->
 
 > Direct download links are updated automatically after each release by CI.  If the links above point to the releases page rather than a specific file, a new release is in progress.
@@ -56,6 +57,7 @@ app/main.py                          ← Tkinter GUI (entry point + PyInstaller 
 | `reports/` | Generated PDFs — **never commit** |
 | `%APPDATA%\ResilienceScan\config.yml` | SMTP credentials (Windows) |
 | `~/.local/share/resiliencescan/config.yml` | SMTP credentials (Linux) |
+| `~/Library/Application Support/ResilienceScan/config.yml` | SMTP credentials (macOS) |
 | `C:\ProgramData\ResilienceScan\setup.log` | Installer setup progress (Windows) |
 
 ### Score columns in CSV
@@ -142,6 +144,10 @@ NSIS .exe installer
 
 `.deb` package with `postinst.sh` that launches `setup_linux.sh` via `nohup` + `disown` (deferred to avoid dpkg lock deadlock).  `setup_linux.sh` installs R, Quarto, TinyTeX, system libs for kableExtra, and all R packages.
 
+### How the macOS installer works
+
+`setup_macos.sh` is bundled inside the `.app` and launched automatically on first run.  It detects the CPU architecture (`arm64` vs `x86_64`), downloads and installs R 4.5.1 (`.pkg` via `installer -pkg -target /`), downloads and installs Quarto 1.6.39 (`.pkg`), runs `quarto install tinytex`, symlinks TinyTeX binaries to `/usr/local/bin`, and installs all 19 R packages into the bundled `r-library`.  A macOS notification is shown when setup finishes.
+
 ### Pinned dependency versions
 
 | Dependency | Version | Notes |
@@ -160,6 +166,7 @@ NSIS .exe installer
 | Linux | `*-amd64.deb` | Debian/Ubuntu |
 | Linux | `*-x86_64.AppImage` | Universal Linux |
 | Linux | `*-linux-amd64.tar.gz` | Raw bundle |
+| macOS | `*-macos-arm64.dmg` | DMG installer, Apple Silicon (M1/M2/M3) |
 
 ### R library path (frozen app)
 
@@ -226,7 +233,7 @@ git add pyproject.toml && git commit -m "v0.X.Y: description"
 git push origin main
 ```
 
-**Do not create tags manually** — CI detects that `v<version>` does not exist and creates it.  macOS is not a target.
+**Do not create tags manually** — CI detects that `v<version>` does not exist and creates it.  Targets: Windows (x86_64), Linux (x86_64), macOS (Apple Silicon / arm64).
 
 ### CI workflows
 
@@ -255,7 +262,7 @@ The app injects `R_LIBS=<InstallDir>\r-library` into all R subprocesses.  If pac
 
 ### SMTP email not sending
 
-Edit `%APPDATA%\ResilienceScan\config.yml` (Windows) or `~/.local/share/resiliencescan/config.yml` (Linux) with valid SMTP credentials, or use the **Configuration** tab in the GUI to save them.  On Windows the app tries Outlook COM first and falls back to SMTP.
+Edit `%APPDATA%\ResilienceScan\config.yml` (Windows), `~/.local/share/resiliencescan/config.yml` (Linux), or `~/Library/Application Support/ResilienceScan/config.yml` (macOS) with valid SMTP credentials, or use the **Configuration** tab in the GUI to save them.  On Windows the app tries Outlook COM first and falls back to SMTP.
 
 ---
 
@@ -268,6 +275,7 @@ Edit `%APPDATA%\ResilienceScan\config.yml` (Windows) or `~/.local/share/resilien
 │   ├── launch_setup.ps1             # NSIS calls this; registers Task Scheduler task
 │   ├── setup_dependencies.ps1       # runs as SYSTEM; installs R/Quarto/TinyTeX/packages
 │   ├── setup_linux.sh               # Linux equivalent of setup_dependencies.ps1
+│   ├── setup_macos.sh               # macOS dependency installer (R, Quarto, TinyTeX, R packages)
 │   ├── postinst.sh                  # .deb postinst — deferred setup_linux.sh via nohup
 │   └── template.desktop             # Linux desktop entry
 ├── _extensions/                     # Quarto titlepage extension (committed)
