@@ -196,3 +196,104 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 ## Active milestones
 
 All milestones M1–M63 complete.
+
+---
+
+## Proposed next milestones
+
+### M64 — Verify CI in new repo + fix repo-wide stale references
+**Goal:** Confirm the M63 bundled-build CI passes end-to-end in `kamitor/ResilenceScanReportBundled`; remove every remaining reference to the old repo.
+
+**Tasks:**
+1. Check GitHub Actions run for sha `a6a3618` — confirm `test`, `version-check`, `build` (Windows/Linux/macOS), `installer-smoke`, `build-smoke-macos`, and `publish` all pass.
+2. Grep codebase for `Windesheim-A-I-Support`, `ResilenceScanReportBuilder` (old name), and `Windesheim` — fix any remaining occurrences in source files, README, packaging metadata, and desktop entries.
+3. Update `README.md` entirely: remove all staged-installer documentation (PowerShell task scheduler, postinst, setup_macos.sh instructions), replace with bundled-installer install steps (just run the installer — no setup wait), update download links to new repo.
+4. Update `nfpm.yaml` maintainer/homepage fields if they reference the old org.
+
+**Gate:** CI green on new repo; `grep -r "Windesheim-A-I-Support\|ResilenceScanReportBuilder[^B]" .` returns nothing outside `CLAUDE.md` history entries.
+
+---
+
+### M65 — End-to-end render smoke test in CI
+**Goal:** After bundling, actually invoke `quarto render` on a minimal fixture inside CI to confirm the bundled R + Quarto + TinyTeX stack produces a valid PDF — not just that the binaries exist.
+
+**Tasks:**
+1. Create `tests/fixtures/smoke_report.qmd` — a minimal Quarto document that loads one R package (e.g. `ggplot2`) and renders to PDF.
+2. Add a CI step (in the `build` job, after vendoring completes) that runs:
+   ```bash
+   vendor/quarto/bin/quarto render tests/fixtures/smoke_report.qmd --to pdf
+   ```
+   using `build_r_env()` for the subprocess environment.
+3. Assert the output PDF exists and is > 1 KB.
+4. Run this on all three platforms (Windows, Linux, macOS) as part of the existing build matrix.
+
+**Gate:** CI produces a rendered PDF on all three platforms; job fails if `quarto render` exits non-zero.
+
+---
+
+### M66 — Bundle size audit + artifact optimisation
+**Goal:** Measure and reduce the size of the bundled release artifacts (expected ~400–600 MB) to the minimum necessary for correct operation.
+
+**Tasks:**
+1. After a successful M64 CI run, record artifact sizes for each platform.
+2. Audit `vendor/r/` for unneeded components: source files, static libraries, docs, demos, Tcl/Tk if unused, 32-bit libs on 64-bit Windows.
+3. Audit `vendor/r-library/` — strip compiled `.o`/`.a` files from R package builds (not needed at runtime).
+4. Audit `vendor/tinytex/` — identify and remove LaTeX packages not in the required `tlmgr` list.
+5. Re-measure artifact sizes; target < 350 MB per platform.
+6. Document final sizes in CLAUDE.md.
+
+**Gate:** All three platform artifacts < 350 MB; `quarto render` smoke test (M65) still passes after stripping.
+
+---
+
+### M67 — Round-6 code review (post-M63 surface)
+**Goal:** Fresh independent review of the code changes introduced in M63 (bin_paths, gui_settings refactor, ci.yml rewrite, app_paths changes) to catch regressions, edge cases, or design issues.
+
+**Tasks:**
+1. Write `REVIEW6.md` covering: `utils/bin_paths.py`, `app/app_paths.py`, `app/gui_settings.py`, `app/gui_generate.py`, `generate_all_reports.py`, `.github/workflows/ci.yml`.
+2. For each finding: severity (critical / warning / info), description, proposed fix.
+3. Implement all critical and warning findings; document info findings for later.
+4. Update test suite if new edge cases are identified.
+
+**Gate:** `REVIEW6.md` complete; all critical/warning findings resolved; 420+ tests passing.
+
+---
+
+### M68 — GitHub Pages website polish
+**Goal:** Make the `docs/index.html` promotional site production-quality with real screenshots, accurate download links (auto-updated by CI), and a link from the repo README.
+
+**Tasks:**
+1. Add a screenshot of the GUI (Data tab, Generation tab) to `docs/assets/`.
+2. Add a sample PDF thumbnail to `docs/assets/` showing the report format.
+3. Wire CI `update-readme` job to also patch the version number in `docs/index.html` after each release (replace hardcoded `v0.21.63` with the live version).
+4. Add a "Website" link to `README.md` pointing at `https://kamitor.github.io/ResilenceScanReportBundled/`.
+5. Add Open Graph meta tags (`og:title`, `og:description`, `og:image`) to `docs/index.html`.
+
+**Gate:** Site live at GitHub Pages URL; version number auto-updates on release; screenshots present.
+
+---
+
+### M69 — macOS code signing (Gatekeeper hardening)
+**Goal:** Eliminate the "app is damaged" Gatekeeper error on macOS by signing and notarising the DMG.
+
+**Tasks:**
+1. Obtain an Apple Developer ID Application certificate (requires paid Apple Developer account).
+2. Add GitHub Actions secrets: `APPLE_CERT_BASE64`, `APPLE_CERT_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_NOTARIZE_USER`, `APPLE_NOTARIZE_PASSWORD`.
+3. Add codesign step in the macOS build job: sign the `.app` bundle and all bundled binaries (Rscript, quarto, tlmgr).
+4. Add `xcrun notarytool submit` + `xcrun stapler staple` steps for the DMG.
+5. Update README macOS section — remove the `xattr -cr` workaround once signing is in place.
+
+**Gate:** DMG installs and opens on a clean macOS machine without any Gatekeeper dialog; notarisation ticket stapled to DMG.
+
+---
+
+### M70 — Windows installer code signing
+**Goal:** Sign the `.exe` installer with an EV code-signing certificate to prevent SmartScreen warnings.
+
+**Tasks:**
+1. Obtain an EV code-signing certificate (DigiCert / Sectigo or equivalent).
+2. Add GitHub Actions secret: `WINDOWS_CERT_BASE64`, `WINDOWS_CERT_PASSWORD`.
+3. Add `signtool sign` step in the Windows build job after NSIS produces the `.exe`.
+4. Update README Windows section to note the signed installer.
+
+**Gate:** Installer passes Windows SmartScreen without warning on a clean Windows machine.
