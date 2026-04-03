@@ -23,6 +23,48 @@ A Windows, Linux, and macOS desktop application that generates personalised PDF 
 
 ---
 
+## Installation
+
+### macOS (Apple Silicon — M1 / M2 / M3)
+
+> **Requirement:** macOS 12 Monterey or later on Apple Silicon.  An internet connection is needed during first launch so the app can download R, Quarto, and TinyTeX (~600 MB total).
+
+1. Download the `.dmg` file from the Downloads table above.
+2. Open the `.dmg` — a Finder window appears with the app icon.
+3. Drag **ResilenceScanReportBuilder** into your **Applications** folder.
+4. **First-launch Gatekeeper prompt** — macOS will say the app is from an unidentified developer.
+   - Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**, then confirm.
+   - Alternatively, right-click the app in Finder and choose **Open**, then click **Open** in the dialog.
+5. The app opens and immediately begins installing dependencies in the background (R, Quarto, TinyTeX, and 19 R packages).  A progress notification appears when setup is complete — this typically takes **10–20 minutes** on a fast connection.
+6. Once setup is complete the app is fully functional.  You do not need to restart.
+
+**Troubleshooting macOS install:**
+
+| Problem | Solution |
+|---------|----------|
+| "App is damaged and can't be opened" | Run `xattr -cr /Applications/ResilenceScanReportBuilder.app` in Terminal, then relaunch. |
+| Setup never finishes | Open Terminal and run `~/Library/Application\ Support/ResilienceScan/setup.log` to check progress. |
+| R/Quarto not found after setup | Quit and relaunch the app — the startup check re-reads PATH on every launch. |
+| SMTP email not sending | Open the **Configuration** tab and enter your SMTP credentials, or edit `~/Library/Application Support/ResilienceScan/config.yml` directly. |
+
+---
+
+### Windows
+
+1. Download the `*-windows-setup.exe` installer.
+2. Run the installer and follow the prompts (administrator rights required).
+3. The installer registers a background task that silently installs R, Quarto, and TinyTeX.  You can launch the app immediately — setup continues in the background.
+4. Check `C:\ProgramData\ResilienceScan\setup.log` to monitor progress.  The last line will read `=== Dependency setup complete ===` when done.
+
+### Linux (Ubuntu / Debian)
+
+1. Download the `*-amd64.deb` package.
+2. Install it: `sudo dpkg -i ResilenceScanReportBuilder-*-amd64.deb`
+3. The `postinst` script launches dependency setup in the background via `nohup`.
+4. Launch the app from your application menu or run `ResilenceScanReportBuilder`.
+
+---
+
 ## What it does
 
 1. **Import** — reads respondent data from `.xlsx` (or `.xml`) and converts it to a clean CSV
@@ -245,6 +287,26 @@ git push origin main
 ---
 
 ## Troubleshooting
+
+### Startup guard fails on macOS after fresh install
+
+The dependency setup runs in the background on first launch.  **Wait for setup to complete** (10–20 minutes) before trying to generate reports.  Monitor progress:
+
+```bash
+tail -f ~/Library/Application\ Support/ResilienceScan/setup.log
+```
+
+The last line should read `=== Dependency setup complete — PASS ===`.
+
+### "App is damaged and can't be opened" (macOS)
+
+This is a Gatekeeper quarantine flag set when a DMG is downloaded from the internet.  Remove it with:
+
+```bash
+xattr -cr /Applications/ResilenceScanReportBuilder.app
+```
+
+Then relaunch the app normally.
 
 ### Startup guard fails on Windows after fresh install
 
