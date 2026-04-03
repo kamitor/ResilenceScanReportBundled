@@ -58,6 +58,7 @@ REQUIRED_ASSETS = [
     "QTDublinIrish.otf",
     "packaging/setup_dependencies.ps1",
     "packaging/launch_setup.ps1",
+    "packaging/setup_macos.sh",
     "img",  # directory
     "tex",  # directory
     "_extensions",  # directory

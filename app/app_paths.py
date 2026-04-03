@@ -34,11 +34,15 @@ def _data_root() -> Path:
     """User-writable directory for data/, reports/, and logs.
 
     Dev:    repo root (same as asset root, data files live alongside scripts)
-    Frozen: APPDATA/ResilienceScan (Windows) or ~/.local/share/resiliencescan (Linux)
+    Frozen: APPDATA/ResilienceScan  (Windows)
+            ~/Library/Application Support/ResilienceScan  (macOS)
+            ~/.local/share/resiliencescan  (Linux)
     """
     if getattr(sys, "frozen", False):
         if sys.platform == "win32":
             return Path(os.environ.get("APPDATA", str(Path.home()))) / "ResilienceScan"
+        if sys.platform == "darwin":
+            return Path.home() / "Library" / "Application Support" / "ResilienceScan"
         return Path.home() / ".local" / "share" / "resiliencescan"
     return Path(__file__).resolve().parents[1]
 

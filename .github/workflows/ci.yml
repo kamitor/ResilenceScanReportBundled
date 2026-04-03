@@ -111,7 +111,7 @@ jobs:
             echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── Build artifacts: Windows and Linux ───────────────────────────────────────
+  # ── Build artifacts: Windows, Linux, and macOS ───────────────────────────────
   build:
     needs: version-check
     if: needs.version-check.outputs.release == 'true'
@@ -123,6 +123,8 @@ jobs:
             artifact: windows
           - os: ubuntu-latest
             artifact: linux
+          - os: macos-14
+            artifact: macos
     runs-on: ${{ matrix.os }}
     env:
       APP_VERSION: ${{ needs.version-check.outputs.version }}
@@ -150,6 +152,13 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-tk tk-dev
+
+      - name: Install macOS system libraries
+        if: runner.os == 'macOS'
+        run: |
+          brew install tcl-tk
+          # Ensure tkinter links against the Homebrew Tcl/Tk
+          brew install python-tk@3.13 || true
 
       # ── Windows ──────────────────────────────────────────────────────────────
       - name: Write _version.py
@@ -377,6 +386,40 @@ jobs:
           chmod 755 "${DEB_ROOT}/DEBIAN/postinst"
           dpkg-deb --build --root-owner-group "${DEB_ROOT}" \
             "dist/${REPO_NAME}-${APP_VERSION}-amd64.deb"
+
+      # ── macOS ─────────────────────────────────────────────────────────────────
+      - name: Build macOS app (.app bundle)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --clean --noconfirm --onedir --windowed \
+            --name "$REPO_NAME" \
+            --hidden-import tkinter \
+            --hidden-import _tkinter \
+            --add-data "ResilienceReport.qmd:." \
+            --add-data "SCROLReport.qmd:." \
+            --add-data "img:img" \
+            --add-data "tex:tex" \
+            --add-data "_extensions:_extensions" \
+            --add-data "references.bib:." \
+            --add-data "QTDublinIrish.otf:." \
+            --add-data "packaging/setup_macos.sh:." \
+            app/main.py
+
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          # hdiutil expects a source folder or .app bundle.
+          # PyInstaller --windowed --onedir produces dist/<Name>.app/
+          APP_BUNDLE="dist/${REPO_NAME}.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            # Fallback: wrap the onedir bundle as a minimal .app
+            APP_BUNDLE="dist/${REPO_NAME}"
+          fi
+          hdiutil create \
+            -volname "${REPO_NAME} ${APP_VERSION}" \
+            -srcfolder "$APP_BUNDLE" \
+            -ov -format UDZO \
+            "dist/${REPO_NAME}-${APP_VERSION}-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -626,6 +669,7 @@ jobs:
           | Linux | [.deb (Ubuntu/Debian)]({base}/{repo_name}-{ver}-amd64.deb) |
           | Linux | [AppImage]({base}/{repo_name}-{ver}-x86_64.AppImage) |
           | Linux | [Tarball (.tar.gz)]({base}/{repo_name}-{ver}-linux-amd64.tar.gz) |
+          | macOS | [macOS DMG (Apple Silicon)]({base}/{repo_name}-{ver}-macos-arm64.dmg) |
           <!-- DOWNLOAD_LINKS_END -->"""
 
           text = open("README.md", encoding="utf-8").read()
