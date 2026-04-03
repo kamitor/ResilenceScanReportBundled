@@ -175,13 +175,14 @@ def test_config_path_frozen_darwin(monkeypatch):
 
 
 def test_r_library_path_frozen_darwin(monkeypatch, tmp_path):
-    """_r_library_path() uses sys.executable.parent/r-library on macOS."""
+    """_r_library_path() returns the bundled r-library on macOS (frozen)."""
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "platform", "darwin")
-    fake_exe = tmp_path / "ResilenceScanReportBuilder"
-    monkeypatch.setattr(sys, "executable", str(fake_exe))
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    fake_lib = tmp_path / "r-library"
+    fake_lib.mkdir()
     result = ap._r_library_path()
-    assert result == tmp_path / "r-library"
+    assert result == fake_lib
 
 
 # ---------------------------------------------------------------------------

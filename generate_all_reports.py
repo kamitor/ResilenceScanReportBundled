@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from utils.bin_paths import find_quarto_bin
 from utils.constants import QUARTO_TIMEOUT_SECONDS
 from utils.filename_utils import safe_display_name, safe_filename
 
@@ -119,9 +120,12 @@ def generate_reports():
         print(f"   Output: {output_filename}")
 
         # Build quarto command with both company and person parameters
+        quarto_bin = find_quarto_bin()
+        if not quarto_bin:
+            raise RuntimeError("[ERROR] Quarto not found in bundle or PATH")
         temp_output = f"temp_{safe_company}_{safe_person}.pdf"
         cmd = [
-            "quarto",
+            quarto_bin,
             "render",
             str(TEMPLATE),
             "-P",

@@ -2,8 +2,19 @@ name: CI / Release
 
 # Every push to main runs lint+test, then detects whether a new release is
 # needed.  If the version in pyproject.toml does not yet have a matching git
-# tag, the build matrix fires on Windows and Linux and a GitHub Release is
-# created automatically.  PRs only run lint+test.
+# tag, the build matrix fires on Windows, Linux, and macOS, bundles all
+# runtime dependencies (R, Quarto, TinyTeX, R packages) into the artifact,
+# and creates a GitHub Release automatically.  PRs only run lint+test.
+#
+# Dependency strategy (M63+): all deps are pre-installed in CI and shipped
+# inside the release artifact.  No network access or post-install scripts
+# are required on the end-user machine.
+#
+#   Windows : R installed to vendor\r, packages to vendor\r-library,
+#             Quarto to vendor\quarto, TinyTeX to vendor\tinytex.
+#   Linux   : Packages to vendor/r-library, Quarto to vendor/quarto,
+#             TinyTeX to vendor/tinytex.  R itself is a .deb dependency.
+#   macOS   : Same as Windows (R bundled from official .pkg).
 
 on:
   push:
@@ -12,6 +23,12 @@ on:
 
 permissions:
   contents: write
+
+# Pinned component versions — bump here to upgrade across all platforms.
+env:
+  R_VERSION: "4.5.1"
+  QUARTO_VERSION: "1.6.39"
+  R_PKGS: "'readr','dplyr','stringr','tidyr','ggplot2','knitr','fmsb','scales','viridis','patchwork','RColorBrewer','gridExtra','png','lubridate','kableExtra','rmarkdown','jsonlite','ggrepel','cowplot'"
 
 jobs:
   # ── Lint + Test ──────────────────────────────────────────────────────────────
@@ -44,52 +61,6 @@ jobs:
 
       - name: Test
         run: pytest --maxfail=1 --disable-warnings -q
-
-      - name: Check setup_macos.sh (ASCII + shebang + bash syntax)
-        run: |
-          SCRIPT="packaging/setup_macos.sh"
-          python3 -c "
-          import sys
-          data = open('$SCRIPT', 'rb').read()
-          bad = [(i, b) for i, b in enumerate(data) if b > 127]
-          if bad:
-              for pos, byte in bad[:5]:
-                  print(f'Non-ASCII 0x{byte:02X} at offset {pos}', file=sys.stderr)
-              sys.exit(1)
-          print('ASCII check passed')
-          "
-          head -1 "$SCRIPT" | grep -q '^#!/' \
-            || { echo "::error::Missing shebang in $SCRIPT"; exit 1; }
-          bash -n "$SCRIPT" && echo "Bash syntax OK: $SCRIPT"
-          echo "setup_macos.sh checks passed."
-
-      - name: Check PS1 script (syntax + encoding)
-        shell: pwsh
-        run: |
-          # PowerShell 5.1 on Windows reads .ps1 files as Windows-1252.
-          # Non-ASCII bytes (e.g. UTF-8 em dash E2 80 94) contain 0x94 which
-          # Win-1252 maps to a right double-quote, silently closing strings and
-          # producing cryptic parse errors on the target machine.
-          # This check rejects any non-ASCII character before it can ship.
-          $ps1 = "packaging/setup_dependencies.ps1"
-          $content = Get-Content $ps1 -Raw
-          $hits = [regex]::Matches($content, '[^\x00-\x7F]')
-          if ($hits.Count -gt 0) {
-            foreach ($m in $hits) {
-              $cp = [int][char]$m.Value[0]
-              Write-Host "::error file=${ps1}::Non-ASCII char U+$($cp.ToString('X4')) at byte offset $($m.Index) -- use ASCII equivalent"
-            }
-            exit 1
-          }
-          # Full syntax parse via PowerShell's own parser
-          $parseErrors = $null
-          $null = [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path $ps1).Path, [ref]$null, [ref]$parseErrors)
-          if ($parseErrors.Count -gt 0) {
-            foreach ($e in $parseErrors) { Write-Host "::error file=${ps1}::$e" }
-            exit 1
-          }
-          Write-Host "PS1 check passed: ASCII-clean and syntax OK."
 
   # ── Detect whether a new release is needed ───────────────────────────────────
   version-check:
@@ -159,7 +130,7 @@ jobs:
         shell: bash
         run: echo "REPO_NAME=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -175,10 +146,179 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install tcl-tk
-          # Ensure tkinter links against the Homebrew Tcl/Tk
           brew install python-tk@3.13 || true
 
-      # ── Windows ──────────────────────────────────────────────────────────────
+      # ── Bundle: R (Windows) ──────────────────────────────────────────────────
+      - name: Cache Windows R + packages + Quarto + TinyTeX
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        id: cache-win
+        with:
+          path: vendor
+          key: bundle-windows-r${{ env.R_VERSION }}-quarto${{ env.QUARTO_VERSION }}
+
+      - name: Install R to vendor\r (Windows)
+        if: runner.os == 'Windows' && steps.cache-win.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          $url = "https://cran.r-project.org/bin/windows/base/R-$env:R_VERSION-win.exe"
+          Write-Host "Downloading R $env:R_VERSION from $url ..."
+          Invoke-WebRequest $url -OutFile "R-installer.exe"
+          Write-Host "Installing R to vendor\r ..."
+          Start-Process "R-installer.exe" `
+            -ArgumentList "/VERYSILENT /NORESTART /DIR=`"$PWD\vendor\r`"" `
+            -Wait -PassThru | Out-Null
+          Write-Host "R version: $(& 'vendor\r\bin\Rscript.exe' --version 2>&1)"
+
+      - name: Install R packages to vendor\r-library (Windows)
+        if: runner.os == 'Windows' && steps.cache-win.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force "vendor\r-library" | Out-Null
+          & "vendor\r\bin\Rscript.exe" -e `
+            "install.packages(c($env:R_PKGS), lib='vendor/r-library', repos='https://cloud.r-project.org', Ncpus=2)"
+
+      - name: Download Quarto to vendor\quarto (Windows)
+        if: runner.os == 'Windows' && steps.cache-win.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          $url = "https://github.com/quarto-dev/quarto-cli/releases/download/v$env:QUARTO_VERSION/quarto-$env:QUARTO_VERSION-win.zip"
+          Write-Host "Downloading Quarto $env:QUARTO_VERSION ..."
+          Invoke-WebRequest $url -OutFile "quarto.zip"
+          Expand-Archive "quarto.zip" -DestinationPath "vendor_tmp"
+          $extracted = Get-ChildItem "vendor_tmp" | Select-Object -First 1
+          Move-Item $extracted.FullName "vendor\quarto"
+          Remove-Item "vendor_tmp" -Recurse -Force
+          Write-Host "Quarto version: $(& 'vendor\quarto\bin\quarto.exe' --version)"
+
+      - name: Install TinyTeX via Quarto, copy to vendor\tinytex (Windows)
+        if: runner.os == 'Windows' && steps.cache-win.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          & "vendor\quarto\bin\quarto.exe" install tinytex --no-prompt
+          $candidates = @(
+            "$env:APPDATA\quarto\tools\tinytex",
+            "$env:LOCALAPPDATA\quarto\tools\tinytex"
+          )
+          $src = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $src) {
+            Write-Error "TinyTeX not found after quarto install tinytex"
+            exit 1
+          }
+          Write-Host "Copying TinyTeX from $src to vendor\tinytex ..."
+          Copy-Item -Recurse $src "vendor\tinytex"
+          Write-Host "TinyTeX bundled OK."
+
+      # ── Bundle: R packages + Quarto + TinyTeX (Linux) ───────────────────────
+      - name: Install R and system libs for package compilation (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            r-base r-base-dev \
+            libharfbuzz-dev libfribidi-dev \
+            libxml2-dev libcurl4-openssl-dev \
+            libssl-dev libfontconfig1-dev
+
+      - name: Cache Linux R packages + Quarto + TinyTeX
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        id: cache-linux
+        with:
+          path: vendor
+          key: bundle-linux-r${{ env.R_VERSION }}-quarto${{ env.QUARTO_VERSION }}
+
+      - name: Install R packages to vendor/r-library (Linux)
+        if: runner.os == 'Linux' && steps.cache-linux.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p vendor/r-library
+          sudo Rscript -e \
+            "install.packages(c($R_PKGS), lib='vendor/r-library', repos='https://cloud.r-project.org', Ncpus=2)"
+          sudo chmod -R a+rX vendor/r-library
+
+      - name: Download Quarto to vendor/quarto (Linux)
+        if: runner.os == 'Linux' && steps.cache-linux.outputs.cache-hit != 'true'
+        run: |
+          URL="https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz"
+          echo "Downloading Quarto ${QUARTO_VERSION} ..."
+          wget -q "$URL" -O quarto.tar.gz
+          mkdir -p vendor
+          tar xzf quarto.tar.gz -C vendor
+          mv "vendor/quarto-${QUARTO_VERSION}" vendor/quarto
+          echo "Quarto version: $(vendor/quarto/bin/quarto --version)"
+
+      - name: Install TinyTeX via Quarto, copy to vendor/tinytex (Linux)
+        if: runner.os == 'Linux' && steps.cache-linux.outputs.cache-hit != 'true'
+        run: |
+          vendor/quarto/bin/quarto install tinytex --no-prompt
+          ARCH=$(uname -m)
+          SRC="$HOME/.local/share/quarto/tools/tinytex"
+          if [ ! -d "$SRC" ]; then
+            echo "::error::TinyTeX not found at $SRC after quarto install"
+            exit 1
+          fi
+          cp -r "$SRC" vendor/tinytex
+          echo "TinyTeX bundled from $SRC"
+
+      # ── Bundle: R + packages + Quarto + TinyTeX (macOS) ─────────────────────
+      - name: Cache macOS R + packages + Quarto + TinyTeX
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        id: cache-macos
+        with:
+          path: vendor
+          key: bundle-macos-r${{ env.R_VERSION }}-quarto${{ env.QUARTO_VERSION }}
+
+      - name: Install R from official pkg (macOS)
+        if: runner.os == 'macOS' && steps.cache-macos.outputs.cache-hit != 'true'
+        run: |
+          URL="https://cran.r-project.org/bin/macosx/big-sur-arm64/base/R-${R_VERSION}-arm64.pkg"
+          echo "Downloading R ${R_VERSION} for macOS arm64 ..."
+          curl -L "$URL" -o R.pkg
+          sudo installer -pkg R.pkg -target /
+          echo "R version: $(Rscript --version 2>&1)"
+          # Bundle the R framework resources into vendor/r
+          R_FRAMEWORK="/Library/Frameworks/R.framework/Resources"
+          mkdir -p vendor/r
+          cp -R "$R_FRAMEWORK/." vendor/r/
+          echo "R bundled from $R_FRAMEWORK"
+
+      - name: Install R packages to vendor/r-library (macOS)
+        if: runner.os == 'macOS' && steps.cache-macos.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p vendor/r-library
+          Rscript -e \
+            "install.packages(c($R_PKGS), lib='vendor/r-library', repos='https://cloud.r-project.org', Ncpus=2)"
+
+      - name: Download Quarto to vendor/quarto (macOS)
+        if: runner.os == 'macOS' && steps.cache-macos.outputs.cache-hit != 'true'
+        run: |
+          URL="https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-macos.tar.gz"
+          echo "Downloading Quarto ${QUARTO_VERSION} for macOS ..."
+          curl -L "$URL" -o quarto.tar.gz
+          mkdir -p vendor
+          tar xzf quarto.tar.gz -C vendor
+          mv "vendor/quarto-${QUARTO_VERSION}" vendor/quarto 2>/dev/null || \
+            mv vendor/quarto-* vendor/quarto 2>/dev/null || true
+          echo "Quarto version: $(vendor/quarto/bin/quarto --version)"
+
+      - name: Install TinyTeX via Quarto, copy to vendor/tinytex (macOS)
+        if: runner.os == 'macOS' && steps.cache-macos.outputs.cache-hit != 'true'
+        run: |
+          vendor/quarto/bin/quarto install tinytex --no-prompt
+          SRC="$HOME/Library/Application Support/quarto/tools/tinytex"
+          if [ ! -d "$SRC" ]; then
+            # Try alternate location used by some Quarto versions
+            SRC="$HOME/.local/share/quarto/tools/tinytex"
+          fi
+          if [ ! -d "$SRC" ]; then
+            echo "::error::TinyTeX not found after quarto install"
+            exit 1
+          fi
+          cp -R "$SRC" vendor/tinytex
+          echo "TinyTeX bundled from $SRC"
+
+      # ── Write version file ───────────────────────────────────────────────────
       - name: Write _version.py
         shell: python
         run: |
@@ -188,6 +328,7 @@ jobs:
               f.write(f'__version__ = "{ver}"\n')
           print(f"Wrote app/_version.py: {ver}")
 
+      # ── Windows build ────────────────────────────────────────────────────────
       - name: Generate Windows version resource
         if: runner.os == 'Windows'
         shell: python
@@ -235,8 +376,10 @@ jobs:
             --add-data "_extensions;_extensions" `
             --add-data "references.bib;." `
             --add-data "QTDublinIrish.otf;." `
-            --add-data "packaging/setup_dependencies.ps1;." `
-            --add-data "packaging/launch_setup.ps1;." `
+            --add-data "vendor\r;r" `
+            --add-data "vendor\r-library;r-library" `
+            --add-data "vendor\quarto;quarto" `
+            --add-data "vendor\tinytex;tinytex" `
             app/main.py
 
       - name: Install NSIS
@@ -274,8 +417,6 @@ jobs:
           import os, subprocess, shutil, textwrap
           repo = os.environ["REPO_NAME"]
           ver  = os.environ["APP_VERSION"]
-          # Use absolute paths: NSIS defaults CWD to the script's directory,
-          # so relative paths like "dist\foo\" would resolve under packaging\.
           ws     = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
           dist   = os.path.join(ws, "dist")
           bundle = os.path.join(dist, repo)
@@ -292,19 +433,6 @@ jobs:
               File /r "{bundle}\\"
               CreateShortcut "$DESKTOP\\{repo}.lnk" "$INSTDIR\\{repo}.exe"
               WriteUninstaller "$INSTDIR\\Uninstall.exe"
-              ; Run launch_setup.ps1, which registers a Task Scheduler task running
-              ; setup_dependencies.ps1 as SYSTEM (guaranteed elevated, no UAC),
-              ; then blocks until setup_complete.flag is written (up to 2 hours).
-              ; Exit code 0 = PASS, non-zero = FAIL.
-              ; Progress: C:\\ProgramData\\ResilienceScan\\setup.log
-              DetailPrint "Scheduling background dependency setup (R, Quarto, TinyTeX)..."
-              DetailPrint "Progress: C:\\ProgramData\\ResilienceScan\\setup.log"
-              nsExec::ExecToLog '$WINDIR\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\\_internal\\launch_setup.ps1" -InstallDir "$INSTDIR"'
-              Pop $0
-              IntCmp $0 0 setup_ok setup_warn setup_warn
-              setup_warn:
-                MessageBox MB_OK|MB_ICONSTOP "Dependency setup finished with errors.$\\nThe application is installed but R, Quarto, and TinyTeX may not be ready.$\\nCheck C:\\ProgramData\\ResilienceScan\\setup.log for details."
-              setup_ok:
             SectionEnd
             Section "Uninstall"
               Delete "$DESKTOP\\{repo}.lnk"
@@ -327,7 +455,7 @@ jobs:
           Compress-Archive -Path "dist\$env:REPO_NAME\*" `
             -DestinationPath "dist\$env:REPO_NAME-$env:APP_VERSION-windows-portable.zip"
 
-      # ── Linux ─────────────────────────────────────────────────────────────────
+      # ── Linux build ────────────────────────────────────────────────────────────
       - name: Build Linux app (onedir)
         if: runner.os == 'Linux'
         run: |
@@ -342,6 +470,9 @@ jobs:
             --add-data "_extensions:_extensions" \
             --add-data "references.bib:." \
             --add-data "QTDublinIrish.otf:." \
+            --add-data "vendor/r-library:r-library" \
+            --add-data "vendor/quarto:quarto" \
+            --add-data "vendor/tinytex:tinytex" \
             app/main.py
 
       - name: Generate .desktop file
@@ -361,7 +492,6 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p AppDir/usr/bin
-          # Copy the full onedir bundle into the AppImage
           cp -r "dist/$REPO_NAME/"* AppDir/usr/bin/
           cp "packaging/${REPO_NAME}.desktop" AppDir/
           if [ -f "assets/icon.png" ]; then
@@ -386,7 +516,6 @@ jobs:
       - name: Build .deb package
         if: runner.os == 'Linux'
         run: |
-          chmod +x packaging/postinst.sh
           PKG_NAME=$(echo "${REPO_NAME}" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
           DEB_ROOT="$(pwd)/deb_build"
           mkdir -p "${DEB_ROOT}/DEBIAN"
@@ -394,18 +523,15 @@ jobs:
           mkdir -p "${DEB_ROOT}/usr/bin"
           mkdir -p "${DEB_ROOT}/usr/share/applications"
           cp -r "dist/${REPO_NAME}/." "${DEB_ROOT}/opt/${REPO_NAME}/"
-          cp packaging/setup_linux.sh "${DEB_ROOT}/opt/${REPO_NAME}/setup_linux.sh"
-          chmod 755 "${DEB_ROOT}/opt/${REPO_NAME}/setup_linux.sh"
           ln -s "/opt/${REPO_NAME}/${REPO_NAME}" "${DEB_ROOT}/usr/bin/${REPO_NAME}"
           cp "packaging/${REPO_NAME}.desktop" "${DEB_ROOT}/usr/share/applications/"
-          printf 'Package: %s\nVersion: %s\nArchitecture: amd64\nMaintainer: Windesheim <info@windesheim.nl>\nDescription: ResilienceScan Control Center\n' \
+          # R is a .deb dependency — packages, Quarto, and TinyTeX are bundled.
+          printf 'Package: %s\nVersion: %s\nArchitecture: amd64\nMaintainer: Windesheim <info@windesheim.nl>\nDepends: r-base (>= 4.4)\nDescription: ResilienceScan Control Center\n' \
             "$PKG_NAME" "$APP_VERSION" > "${DEB_ROOT}/DEBIAN/control"
-          cp packaging/postinst.sh "${DEB_ROOT}/DEBIAN/postinst"
-          chmod 755 "${DEB_ROOT}/DEBIAN/postinst"
           dpkg-deb --build --root-owner-group "${DEB_ROOT}" \
             "dist/${REPO_NAME}-${APP_VERSION}-amd64.deb"
 
-      # ── macOS ─────────────────────────────────────────────────────────────────
+      # ── macOS build ────────────────────────────────────────────────────────────
       - name: Build macOS app (.app bundle)
         if: runner.os == 'macOS'
         run: |
@@ -420,17 +546,17 @@ jobs:
             --add-data "_extensions:_extensions" \
             --add-data "references.bib:." \
             --add-data "QTDublinIrish.otf:." \
-            --add-data "packaging/setup_macos.sh:." \
+            --add-data "vendor/r:r" \
+            --add-data "vendor/r-library:r-library" \
+            --add-data "vendor/quarto:quarto" \
+            --add-data "vendor/tinytex:tinytex" \
             app/main.py
 
       - name: Package macOS DMG
         if: runner.os == 'macOS'
         run: |
-          # hdiutil expects a source folder or .app bundle.
-          # PyInstaller --windowed --onedir produces dist/<Name>.app/
           APP_BUNDLE="dist/${REPO_NAME}.app"
           if [ ! -d "$APP_BUNDLE" ]; then
-            # Fallback: wrap the onedir bundle as a minimal .app
             APP_BUNDLE="dist/${REPO_NAME}"
           fi
           hdiutil create \
@@ -444,11 +570,7 @@ jobs:
           name: release-${{ matrix.artifact }}
           path: dist/*
 
-  # ── Installer smoke test: run the Windows .exe and verify PASS ───────────────
-  # Plants a stale FAIL flag before running so we also verify that
-  # launch_setup.ps1 deletes stale flags before starting the task.
-  # setup_dependencies.ps1 detects ci_test_mode.flag and writes PASS instantly
-  # (skipping all downloads), so the full flow completes in ~30 seconds.
+  # ── Windows installer smoke test: verify bundled dirs ────────────────────────
   installer-smoke:
     needs: [version-check, build]
     if: needs.version-check.outputs.release == 'true'
@@ -456,7 +578,6 @@ jobs:
     env:
       APP_VERSION: ${{ needs.version-check.outputs.version }}
       REPO_NAME: ResilenceScanReportBuilder
-      LOG_DIR: C:\ProgramData\ResilienceScan
 
     steps:
       - name: Download Windows installer
@@ -465,18 +586,7 @@ jobs:
           name: release-windows
           path: dist
 
-      # ── First install: stale-flag path ────────────────────────────────────────
-      - name: Prepare flags (CI test mode + stale FAIL)
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path $env:LOG_DIR | Out-Null
-          # Tells setup_dependencies.ps1 to write PASS immediately (no downloads)
-          Set-Content "$env:LOG_DIR\ci_test_mode.flag"   "CI"   -Encoding UTF8
-          # Stale FAIL flag from a previous run — launch_setup.ps1 must delete it
-          Set-Content "$env:LOG_DIR\setup_complete.flag" "FAIL" -Encoding UTF8
-          Write-Host "Test flags written to $env:LOG_DIR"
-
-      - name: Run installer (first install, stale-flag path)
+      - name: Run installer silently
         shell: powershell
         run: |
           $exe = Get-ChildItem dist -Filter "*-windows-setup.exe" | Select-Object -First 1
@@ -485,12 +595,11 @@ jobs:
           $proc = Start-Process $exe.FullName -ArgumentList "/S" -Wait -PassThru
           Write-Host "Exit code: $($proc.ExitCode)"
           if ($proc.ExitCode -ne 0) {
-            Get-Content "$env:LOG_DIR\setup.log" -ErrorAction SilentlyContinue
             Write-Error "Installer exited $($proc.ExitCode)"
             exit $proc.ExitCode
           }
 
-      - name: Check installed files
+      - name: Check installed files and bundled dependencies
         shell: powershell
         run: |
           $inst = "$env:PROGRAMFILES\$env:REPO_NAME"
@@ -502,125 +611,30 @@ jobs:
             else { Write-Host "MISSING  $p"; $script:fail++ }
           }
 
-          Write-Host "=== Installed files ==="
-          ck "$inst\$env:REPO_NAME.exe"        # main binary
-          ck "$inst\Uninstall.exe"              # uninstaller
-          ck "$int\launch_setup.ps1"            # installer helper
-          ck "$int\setup_dependencies.ps1"      # dependency setup script
-          ck "$int\ResilienceReport.qmd"        # primary report template
-          ck "$int\SCROLReport.qmd"             # SCROL matrix template
-          ck "$int\references.bib"              # bibliography
-          ck "$int\QTDublinIrish.otf"           # custom font
-          ck "$int\img"                          # images directory
-          ck "$int\tex"                          # LaTeX includes directory
-          ck "$int\_extensions"                  # Quarto extensions
+          Write-Host "=== Core files ==="
+          ck "$inst\$env:REPO_NAME.exe"
+          ck "$inst\Uninstall.exe"
+          ck "$int\ResilienceReport.qmd"
+          ck "$int\SCROLReport.qmd"
+          ck "$int\references.bib"
+          ck "$int\QTDublinIrish.otf"
+          ck "$int\img"
+          ck "$int\tex"
+          ck "$int\_extensions"
+
+          Write-Host "=== Bundled dependencies ==="
+          ck "$int\r"
+          ck "$int\r\bin\Rscript.exe"
+          ck "$int\r-library"
+          ck "$int\quarto"
+          ck "$int\quarto\bin\quarto.exe"
+          ck "$int\tinytex"
 
           if ($fail -gt 0) {
             Write-Error "$fail file(s) missing after installation"
             exit 1
           }
-          Write-Host "All expected files present."
-
-      - name: Check flag state
-        shell: powershell
-        run: |
-          $fail = 0
-
-          # setup_complete.flag must contain PASS (not the stale FAIL we planted)
-          $flagFile = "$env:LOG_DIR\setup_complete.flag"
-          if (-not (Test-Path $flagFile)) {
-            Write-Host "MISSING  setup_complete.flag"
-            $fail++
-          } else {
-            $result = (Get-Content $flagFile -Raw) -replace '\s', ''
-            if ($result -eq "PASS") { Write-Host "  OK  setup_complete.flag = PASS" }
-            else { Write-Host "FAIL  setup_complete.flag = $result (expected PASS)"; $fail++ }
-          }
-
-          # setup_running.flag must be gone (CI test mode removes it)
-          if (Test-Path "$env:LOG_DIR\setup_running.flag") {
-            Write-Host "FAIL  setup_running.flag still present"
-            $fail++
-          } else { Write-Host "  OK  setup_running.flag removed" }
-
-          # setup_error.log must not exist (no unhandled errors)
-          if (Test-Path "$env:LOG_DIR\setup_error.log") {
-            Write-Host "FAIL  setup_error.log exists (unhandled error):"
-            Get-Content "$env:LOG_DIR\setup_error.log"
-            $fail++
-          } else { Write-Host "  OK  no setup_error.log" }
-
-          if ($fail -gt 0) { exit 1 }
-          Write-Host "Flag state OK."
-
-      - name: Check log content
-        shell: pwsh
-        run: |
-          $logFile = "$env:LOG_DIR\setup.log"
-          if (-not (Test-Path $logFile)) {
-            Write-Error "setup.log not found -- launch_setup.ps1 did not run"
-            exit 1
-          }
-          $log  = Get-Content $logFile -Raw
-          $fail = 0
-
-          function expect($pat, $desc) {
-            if ($log -match $pat) { Write-Host "  OK  $desc" }
-            else { Write-Host "MISSING  $desc  (pattern: $pat)"; $script:fail++ }
-          }
-          function forbid($pat, $desc) {
-            if ($log -match $pat) { Write-Host "FAIL  $desc found in log"; $script:fail++ }
-            else { Write-Host "  OK  no $desc" }
-          }
-
-          Write-Host "=== Log checks ==="
-          # launch_setup.ps1 entries
-          expect "Removed stale setup_complete\.flag" "stale-flag cleanup logged"
-          expect "Task started\. Waiting for completion"  "task start logged"
-          expect "Setup finished with result: PASS"       "PASS result logged"
-          # setup_dependencies.ps1 entry (proves SYSTEM task ran our script)
-          expect "CI test mode active"                    "CI test mode triggered"
-          # No errors
-          forbid "\[ERROR\]"  "[ERROR] in log"
-          forbid "\[FATAL\]"  "[FATAL] in log"
-
-          Write-Host "=== setup.log ==="
-          Write-Host $log
-
-          if ($fail -gt 0) {
-            Write-Error "$fail log check(s) failed"
-            exit 1
-          }
-          Write-Host "Log checks passed."
-
-      # ── Second install: reinstall / idempotency path ──────────────────────────
-      - name: Run installer (reinstall, no stale flag)
-        shell: powershell
-        run: |
-          # ci_test_mode.flag is still present; no stale flag this time.
-          # Verifies the clean-path: launch_setup.ps1 skips stale-flag removal,
-          # task runs again, setup_dependencies.ps1 writes PASS again.
-          $exe  = Get-ChildItem dist -Filter "*-windows-setup.exe" | Select-Object -First 1
-          $proc = Start-Process $exe.FullName -ArgumentList "/S" -Wait -PassThru
-          Write-Host "Reinstall exit code: $($proc.ExitCode)"
-          if ($proc.ExitCode -ne 0) {
-            Get-Content "$env:LOG_DIR\setup.log" -ErrorAction SilentlyContinue
-            Write-Error "Reinstall failed with exit code $($proc.ExitCode)"
-            exit $proc.ExitCode
-          }
-          $result = (Get-Content "$env:LOG_DIR\setup_complete.flag" -Raw) -replace '\s', ''
-          if ($result -ne "PASS") {
-            Write-Error "Reinstall: expected PASS but got: $result"
-            exit 1
-          }
-          Write-Host "Reinstall smoke PASSED."
-
-      - name: Upload logs (always)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-smoke-log
-          path: C:\ProgramData\ResilienceScan\
+          Write-Host "All expected files present — bundled install OK."
 
   # ── macOS build smoke test: mount DMG, verify .app bundle structure ──────────
   build-smoke-macos:
@@ -644,8 +658,8 @@ jobs:
           [ -n "$DMG" ] || { echo "::error::No macOS DMG found in dist/"; ls dist/ || true; exit 1; }
           SIZE=$(stat -f%z "$DMG")
           echo "DMG: $(basename "$DMG")  size=${SIZE} bytes"
-          [ "$SIZE" -gt 1000000 ] \
-            || { echo "::error::DMG suspiciously small (${SIZE} bytes — expected >1 MB)"; exit 1; }
+          [ "$SIZE" -gt 10000000 ] \
+            || { echo "::error::DMG suspiciously small (${SIZE} bytes — expected >10 MB with bundled deps)"; exit 1; }
           echo "DMG size OK."
 
       - name: Mount DMG and verify app bundle
@@ -656,7 +670,6 @@ jobs:
           hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
           trap "hdiutil detach '$MOUNT_DIR' 2>/dev/null || true; rm -rf '$MOUNT_DIR'" EXIT
 
-          # Locate .app bundle inside DMG
           APP=$(find "$MOUNT_DIR" -name "*.app" -maxdepth 2 2>/dev/null | head -1)
           [ -n "$APP" ] || { echo "::error::No .app bundle found in DMG"; exit 1; }
           echo "App bundle: $APP"
@@ -670,37 +683,27 @@ jobs:
             else printf 'MISSING  %s\n' "$1"; fail=$((fail+1)); fi
           }
 
-          echo "=== Bundle structure ==="
+          echo "=== Core files ==="
           chk "$BINARY"
           chk "$APP/Contents/Info.plist"
           chk "$INTERNAL/ResilienceReport.qmd"
           chk "$INTERNAL/SCROLReport.qmd"
           chk "$INTERNAL/references.bib"
           chk "$INTERNAL/QTDublinIrish.otf"
-          chk "$INTERNAL/setup_macos.sh"
           chk "$INTERNAL/img"
           chk "$INTERNAL/tex"
           chk "$INTERNAL/_extensions"
 
-          # Binary must be executable
-          if [ -x "$BINARY" ]; then printf '  OK  binary is executable\n'
-          else printf 'FAIL  binary is not executable\n'; fail=$((fail+1)); fi
+          echo "=== Bundled dependencies ==="
+          chk "$INTERNAL/r"
+          chk "$INTERNAL/r/bin/Rscript"
+          chk "$INTERNAL/r-library"
+          chk "$INTERNAL/quarto"
+          chk "$INTERNAL/quarto/bin/quarto"
+          chk "$INTERNAL/tinytex"
 
-          # setup_macos.sh: shebang + ASCII-only
-          SCRIPT="$INTERNAL/setup_macos.sh"
-          if [ -f "$SCRIPT" ]; then
-            head -1 "$SCRIPT" | grep -q '^#!/' \
-              && printf '  OK  setup_macos.sh shebang present\n' \
-              || { printf 'FAIL  setup_macos.sh missing shebang\n'; fail=$((fail+1)); }
-
-            python3 -c "
-          data = open('$SCRIPT', 'rb').read()
-          bad = [hex(b) for b in data if b > 127]
-          if bad:
-              raise SystemExit('Non-ASCII bytes in setup_macos.sh: ' + str(bad[:5]))
-          print('  OK  setup_macos.sh ASCII-clean')
-            "
-          fi
+          [ -x "$BINARY" ] && printf '  OK  binary is executable\n' \
+            || { printf 'FAIL  binary is not executable\n'; fail=$((fail+1)); }
 
           echo "==="
           [ "$fail" -eq 0 ] || { echo "::error::$fail check(s) failed"; exit 1; }
@@ -751,53 +754,17 @@ jobs:
         run: |
           BASE="https://github.com/${REPO}/releases/download/v${VER}"
           REPO_NAME="${REPO#*/}"
-
-          # Build the replacement block
-          NEW_BLOCK="<!-- DOWNLOAD_LINKS_START -->
-          | Platform | Download |
-          |----------|----------|
-          | Windows | [Windows Installer (.exe)](${BASE}/${REPO_NAME}-${VER}-windows-setup.exe) |
-          | Windows | [Portable ZIP](${BASE}/${REPO_NAME}-${VER}-windows-portable.zip) |
-          | Linux | [.deb (Ubuntu/Debian)](${BASE}/${REPO_NAME}-${VER}-amd64.deb) |
-          | Linux | [AppImage](${BASE}/${REPO_NAME}-${VER}-x86_64.AppImage) |
-          | Linux | [Tarball (.tar.gz)](${BASE}/${REPO_NAME}-${VER}-linux-amd64.tar.gz) |
-          <!-- DOWNLOAD_LINKS_END -->"
-
-          python3 - <<'PYEOF'
-          import re, os
-
-          ver      = os.environ["VER"]
-          repo     = os.environ["REPO"]
-          base     = f"https://github.com/{repo}/releases/download/v{ver}"
-          repo_name = repo.split("/")[1]
-
-          block = f"""<!-- DOWNLOAD_LINKS_START -->
-          | Platform | Download |
-          |----------|----------|
-          | Windows | [Windows Installer (.exe)]({base}/{repo_name}-{ver}-windows-setup.exe) |
-          | Windows | [Portable ZIP]({base}/{repo_name}-{ver}-windows-portable.zip) |
-          | Linux | [.deb (Ubuntu/Debian)]({base}/{repo_name}-{ver}-amd64.deb) |
-          | Linux | [AppImage]({base}/{repo_name}-{ver}-x86_64.AppImage) |
-          | Linux | [Tarball (.tar.gz)]({base}/{repo_name}-{ver}-linux-amd64.tar.gz) |
-          | macOS | [macOS DMG (Apple Silicon)]({base}/{repo_name}-{ver}-macos-arm64.dmg) |
-          <!-- DOWNLOAD_LINKS_END -->"""
-
-          text = open("README.md", encoding="utf-8").read()
-          new_text = re.sub(
-              r"<!-- DOWNLOAD_LINKS_START -->.*?<!-- DOWNLOAD_LINKS_END -->",
-              block,
-              text,
-              flags=re.DOTALL,
-          )
-          open("README.md", "w", encoding="utf-8").write(new_text)
-          print(f"README patched for v{ver}")
-          PYEOF
-
-      - name: Commit updated README
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git diff --cached --quiet && echo "No changes" || \
+          sed -i \
+            -e "s|releases/download/v[0-9.]\+/${REPO_NAME}-[0-9.]\+-windows-setup\.exe|releases/download/v${VER}/${REPO_NAME}-${VER}-windows-setup.exe|g" \
+            -e "s|releases/download/v[0-9.]\+/${REPO_NAME}-[0-9.]\+-linux-amd64\.tar\.gz|releases/download/v${VER}/${REPO_NAME}-${VER}-linux-amd64.tar.gz|g" \
+            -e "s|releases/download/v[0-9.]\+/${REPO_NAME}-[0-9.]\+-macos-arm64\.dmg|releases/download/v${VER}/${REPO_NAME}-${VER}-macos-arm64.dmg|g" \
+            README.md
+          if git diff --quiet; then
+            echo "No README changes needed."
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md
             git commit -m "docs: update download links for v${VER} [skip ci]"
-          git push origin main
+            git push
+          fi

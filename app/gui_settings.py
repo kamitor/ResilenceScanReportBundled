@@ -12,7 +12,7 @@ from tkinter import messagebox
 from app.app_paths import ROOT_DIR
 
 # gui_system_check is a repo-root module (not inside app/)
-from gui_system_check import SystemChecker, setup_status
+from gui_system_check import SystemChecker
 from dependency_manager import DependencyManager
 
 
@@ -25,10 +25,13 @@ class SettingsMixin:
 
     def _startup_guard(self):
         """Check that R, Quarto, TinyTeX, and R packages are present; show a
-        blocking warning dialog if any critical component is missing."""
+        blocking warning dialog if any critical component is missing.
+
+        Dependencies are bundled inside the application.  If any are missing
+        the installation is corrupted — the user should reinstall.
+        """
         checker = SystemChecker()
         result = checker.check_all()
-        install_status = setup_status()
 
         critical = ["R", "quarto", "tinytex"]
         missing = [k for k in critical if not result.get(k, {}).get("ok")]
@@ -36,80 +39,25 @@ class SettingsMixin:
         if missing:
             names = {"R": "R", "quarto": "Quarto", "tinytex": "TinyTeX (tlmgr)"}
             missing_str = "\n".join(f"  \u2022 {names[k]}" for k in missing)
-            if install_status == "running":
-                messagebox.showinfo(
-                    "Setup In Progress",
-                    "Dependency setup is still running in the background.\n\n"
-                    "The following components are not ready yet:\n\n"
-                    f"{missing_str}\n\n"
-                    "This normally takes 5\u201320 minutes after installation.\n"
-                    "The status bar will update when setup completes.\n\n"
-                    "You can use the app in the meantime, but generating\n"
-                    "PDFs will not work until setup finishes.",
-                )
-            elif install_status == "complete_fail":
-                log_hint = (
-                    r"C:\ProgramData\ResilienceScan\setup.log"
-                    if sys.platform == "win32"
-                    else "/var/log/resilencescan-setup.log"
-                )
-                messagebox.showwarning(
-                    "Setup Failed",
-                    "The background dependency setup finished with errors.\n\n"
-                    "Missing components:\n\n"
-                    f"{missing_str}\n\n"
-                    f"Check the setup log for details:\n{log_hint}\n\n"
-                    "Re-run setup or contact support.",
-                )
-            else:
-                messagebox.showwarning(
-                    "Missing Components",
-                    "The following required components were not found on PATH:\n\n"
-                    f"{missing_str}\n\n"
-                    "The installation may be incomplete.  Report generation will\n"
-                    "not work until these are installed.\n\n"
-                    "You can continue, but generating PDFs will fail.",
-                )
+            messagebox.showwarning(
+                "Missing Components",
+                "The following bundled components were not found:\n\n"
+                f"{missing_str}\n\n"
+                "The installation may be corrupted.\n"
+                "Please reinstall the application.\n\n"
+                "You can continue, but generating PDFs will fail.",
+            )
 
-        # Separately handle missing R packages — attempt automatic repair rather
-        # than just warning the user.
+        # R packages missing — attempt automatic repair so a partial bundle
+        # can self-heal without requiring a full reinstall.
         if not result.get("r_packages", {}).get("ok"):
-            if install_status == "running":
-                # Setup still in progress — packages are being installed right now.
-                # The polling loop will notify when done; don't interfere.
-                pass
-            else:
-                # Setup is complete (pass/fail) or unknown (dev mode / prior install).
-                # Auto-attempt package installation so the user doesn't have to
-                # re-run the full 15-minute installer just for missing R packages.
-                self.log(
-                    "[INFO] R packages missing at startup — attempting automatic repair..."
-                )
-                self.status_label.config(
-                    text="Installing missing R packages... (may take a few minutes)"
-                )
-                self.root.after(500, lambda: self._install_r_packages_now(silent=True))
-
-        # If setup is still running, show a status bar indicator and start polling.
-        if install_status == "running":
-            self.status_label.config(text="Installing dependencies... (5-20 min)")
-            self.root.after(30_000, self._poll_setup_completion)
-
-    def _poll_setup_completion(self):
-        """Poll every 30 s for background setup completion; update status bar."""
-        status = setup_status()
-        if status == "complete_pass":
-            self.status_label.config(
-                text="Setup complete \u2014 all dependencies ready."
+            self.log(
+                "[INFO] R packages missing at startup — attempting automatic repair..."
             )
-            self.root.after(10_000, lambda: self.status_label.config(text="Ready"))
-        elif status == "complete_fail":
             self.status_label.config(
-                text="Setup finished with errors \u2014 see System Check."
+                text="Installing missing R packages... (may take a few minutes)"
             )
-        elif status == "running":
-            self.root.after(30_000, self._poll_setup_completion)
-        # else 'unknown' (dev mode / flags cleared) — stop polling silently
+            self.root.after(500, lambda: self._install_r_packages_now(silent=True))
 
     # ------------------------------------------------------------------
     # System check

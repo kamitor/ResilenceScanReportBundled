@@ -12,6 +12,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils.bin_paths import (
+    build_r_env,
+    find_quarto_bin,
+    find_r_bin,
+    find_r_library,
+    find_tinytex_bin,
+)
 from utils.constants import R_SUBPROCESS_TIMEOUT
 
 
@@ -118,15 +125,12 @@ def _config_path() -> Path:
 
 
 def _r_library_path() -> "Path | None":
-    """Return the bundled R library path when frozen, None in dev mode.
+    """Return the bundled R package library path, or None if not present.
 
-    The NSIS / postinst installer places R packages in an ``r-library``
-    directory alongside the executable so the app uses them instead of (or
-    in addition to) whatever the user has installed system-wide.
+    Checks the bundle root (_internal/ when frozen, vendor/ in dev) for an
+    r-library/ directory pre-installed at CI build time.
     """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "r-library"
-    return None
+    return find_r_library()
 
 
 def _check_r_packages_ready() -> "str | None":
@@ -136,17 +140,13 @@ def _check_r_packages_ready() -> "str | None":
     check is representative of what will happen during quarto render.
     Returns immediately (< 5 s) and is safe to call from any thread.
     """
-    from gui_system_check import _R_PACKAGES, _find_rscript
+    from gui_system_check import _R_PACKAGES
 
-    rscript = _find_rscript()
+    rscript = R_BIN
     if not rscript:
-        return "Rscript not found on PATH"
+        return "Rscript not found — R is not installed or not bundled"
 
-    env = os.environ.copy()
-    r_lib = _r_library_path()
-    if r_lib is not None and r_lib.exists():
-        existing = env.get("R_LIBS", "")
-        env["R_LIBS"] = f"{r_lib}{os.pathsep}{existing}" if existing else str(r_lib)
+    env = build_r_env()
 
     pkg_list = ", ".join(f'"{p}"' for p in _R_PACKAGES)
     script = (
@@ -186,3 +186,11 @@ TEMPLATE = (
 )  # must be in writable _DATA_ROOT, not ROOT_DIR
 LOG_FILE = _DATA_ROOT / "gui_log.txt"
 CONFIG_FILE = _config_path()
+
+# ---------------------------------------------------------------------------
+# Bundled binary paths — resolved once at startup.
+# Bundle-first (vendor/ in dev, _internal/ when frozen), fall back to PATH.
+# ---------------------------------------------------------------------------
+R_BIN: "str | None" = find_r_bin()
+QUARTO_BIN: "str | None" = find_quarto_bin()
+TINYTEX_BIN: "str | None" = find_tinytex_bin()

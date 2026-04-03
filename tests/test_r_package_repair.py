@@ -196,7 +196,6 @@ class _FakeGUI:
     _install_r_packages_now = SettingsMixin._install_r_packages_now
     _r_install_done = SettingsMixin._r_install_done
     _startup_guard = SettingsMixin._startup_guard
-    _poll_setup_completion = SettingsMixin._poll_setup_completion
 
 
 class _MockMsgbox:
@@ -489,7 +488,7 @@ def _make_result(r_packages_ok=True, r_ok=True, quarto_ok=True, tinytex_ok=True)
 
 @pytest.fixture()
 def patched_guard(monkeypatch):
-    """Patch SystemChecker and setup_status in app.gui_settings."""
+    """Patch SystemChecker and messagebox in app.gui_settings."""
     import app.gui_settings as gs
 
     mb = _MockMsgbox()
@@ -497,8 +496,8 @@ def patched_guard(monkeypatch):
     return mb
 
 
-def test_startup_guard_auto_repair_complete_fail(monkeypatch, patched_guard):
-    """status=complete_fail + packages missing → auto-repair is scheduled."""
+def test_startup_guard_auto_repair_packages_missing(monkeypatch, patched_guard):
+    """Packages missing → auto-repair is always scheduled (bundled installer)."""
     import app.gui_settings as gs
 
     repair_calls: list = []
@@ -508,7 +507,6 @@ def test_startup_guard_auto_repair_complete_fail(monkeypatch, patched_guard):
         "SystemChecker",
         type("SC", (), {"check_all": lambda s: _make_result(r_packages_ok=False)}),
     )
-    monkeypatch.setattr(gs, "setup_status", lambda: "complete_fail")
 
     gui = _FakeGUI()
     monkeypatch.setattr(
@@ -519,66 +517,12 @@ def test_startup_guard_auto_repair_complete_fail(monkeypatch, patched_guard):
     # The repair is scheduled via root.after(500, ...) — flush it
     gui.root.flush_pending(timeout=2.0)
 
-    assert repair_calls, (
-        "Auto-repair must be triggered when packages missing and status=complete_fail"
-    )
+    assert repair_calls, "Auto-repair must be triggered when R packages are missing"
     assert repair_calls[0] is True, "Auto-repair must be called with silent=True"
 
 
-def test_startup_guard_auto_repair_unknown(monkeypatch, patched_guard):
-    """status=unknown (no installer run) + packages missing → auto-repair is scheduled."""
-    import app.gui_settings as gs
-
-    repair_calls: list = []
-
-    monkeypatch.setattr(
-        gs,
-        "SystemChecker",
-        type("SC", (), {"check_all": lambda s: _make_result(r_packages_ok=False)}),
-    )
-    monkeypatch.setattr(gs, "setup_status", lambda: "unknown")
-
-    gui = _FakeGUI()
-    monkeypatch.setattr(
-        gui, "_install_r_packages_now", lambda silent=False: repair_calls.append(silent)
-    )
-
-    gui._startup_guard()
-    gui.root.flush_pending(timeout=2.0)
-
-    assert repair_calls, (
-        "Auto-repair must be triggered when status=unknown and packages missing"
-    )
-    assert repair_calls[0] is True
-
-
-def test_startup_guard_no_repair_when_running(monkeypatch, patched_guard):
-    """status=running → auto-repair must NOT fire (setup is already installing)."""
-    import app.gui_settings as gs
-
-    repair_calls: list = []
-
-    monkeypatch.setattr(
-        gs,
-        "SystemChecker",
-        type("SC", (), {"check_all": lambda s: _make_result(r_packages_ok=False)}),
-    )
-    monkeypatch.setattr(gs, "setup_status", lambda: "running")
-
-    gui = _FakeGUI()
-    monkeypatch.setattr(
-        gui, "_install_r_packages_now", lambda silent=False: repair_calls.append(silent)
-    )
-
-    gui._startup_guard()
-    # Give the root a brief window to flush any unexpected after() calls
-    gui.root.flush_pending(timeout=0.3)
-
-    assert not repair_calls, "Auto-repair must NOT run when setup is still in progress"
-
-
 def test_startup_guard_no_repair_when_packages_ok(monkeypatch, patched_guard):
-    """All packages OK → auto-repair must NOT fire regardless of install_status."""
+    """All packages OK → auto-repair must NOT fire."""
     import app.gui_settings as gs
 
     repair_calls: list = []
@@ -588,7 +532,6 @@ def test_startup_guard_no_repair_when_packages_ok(monkeypatch, patched_guard):
         "SystemChecker",
         type("SC", (), {"check_all": lambda s: _make_result(r_packages_ok=True)}),
     )
-    monkeypatch.setattr(gs, "setup_status", lambda: "complete_fail")
 
     gui = _FakeGUI()
     monkeypatch.setattr(

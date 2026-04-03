@@ -42,6 +42,8 @@ Run the complete quality gate (lint + format + tests) and give a concise, action
    pytest tests/test_smoke.py -v 2>&1
    ```
 
+6. If tests involve R/Quarto/TinyTeX, note that the project uses a **bundled installer** — the test suite should mock or stub these binaries rather than requiring a system install. Flag any test that assumes system PATH availability of R/Quarto as a potential CI fragility.
+
 ## Output format
 
 ```

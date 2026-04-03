@@ -18,10 +18,10 @@ if str(ROOT) not in sys.path:
 
 
 def test_check_r_packages_ready_rscript_not_found(monkeypatch):
-    """Returns an error string when Rscript is not on PATH."""
+    """Returns an error string when R_BIN is None (no R in bundle or PATH)."""
     import app.app_paths as ap
 
-    monkeypatch.setattr("gui_system_check._find_rscript", lambda: None)
+    monkeypatch.setattr(ap, "R_BIN", None)
     result = ap._check_r_packages_ready()
     assert result is not None
     assert "not found" in result.lower() or "rscript" in result.lower()
@@ -31,7 +31,7 @@ def test_check_r_packages_ready_ok(monkeypatch):
     """Returns None when Rscript outputs 'OK'."""
     import app.app_paths as ap
 
-    monkeypatch.setattr("gui_system_check._find_rscript", lambda: "/usr/bin/Rscript")
+    monkeypatch.setattr(ap, "R_BIN", "/usr/bin/Rscript")
 
     mock_result = MagicMock()
     mock_result.stdout = "OK"
@@ -46,7 +46,7 @@ def test_check_r_packages_ready_missing_packages(monkeypatch):
     """Returns error string when Rscript reports missing packages."""
     import app.app_paths as ap
 
-    monkeypatch.setattr("gui_system_check._find_rscript", lambda: "/usr/bin/Rscript")
+    monkeypatch.setattr(ap, "R_BIN", "/usr/bin/Rscript")
 
     mock_result = MagicMock()
     mock_result.stdout = "MISSING: fmsb, ggrepel"
@@ -62,7 +62,7 @@ def test_check_r_packages_ready_subprocess_timeout(monkeypatch):
     """Returns error string when subprocess.run raises TimeoutExpired."""
     import app.app_paths as ap
 
-    monkeypatch.setattr("gui_system_check._find_rscript", lambda: "/usr/bin/Rscript")
+    monkeypatch.setattr(ap, "R_BIN", "/usr/bin/Rscript")
 
     with patch(
         "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="R", timeout=30)
@@ -77,7 +77,7 @@ def test_check_r_packages_ready_subprocess_exception(monkeypatch):
     """Returns error string when subprocess.run raises any exception."""
     import app.app_paths as ap
 
-    monkeypatch.setattr("gui_system_check._find_rscript", lambda: "/usr/bin/Rscript")
+    monkeypatch.setattr(ap, "R_BIN", "/usr/bin/Rscript")
 
     with patch("subprocess.run", side_effect=OSError("No such file")):
         result = ap._check_r_packages_ready()

@@ -5,13 +5,17 @@ Called by the GUI at startup and via the System Check button.  Returns a
 structured result so the GUI can display per-component pass/fail details.
 """
 
-import glob
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from utils.bin_paths import (
+    find_quarto_bin,
+    find_r_bin,
+    find_r_library,
+    find_tinytex_bin,
+)
 from utils.constants import R_SUBPROCESS_TIMEOUT
 
 # All R packages required by ResilienceReport.qmd
@@ -76,101 +80,18 @@ def _refresh_windows_path() -> None:
 
 
 def _find_rscript() -> str | None:
-    """Find Rscript.exe via PATH, then well-known install locations."""
-    exe = shutil.which("Rscript") or shutil.which("R")
-    if exe:
-        return exe
-    if sys.platform == "win32":
-        for pattern in [
-            r"C:\Program Files\R\R-*\bin\Rscript.exe",
-            r"C:\Program Files\R\R-*\bin\x64\Rscript.exe",
-        ]:
-            matches = sorted(glob.glob(pattern), reverse=True)  # newest first
-            if matches:
-                return matches[0]
-    return None
+    """Find Rscript — bundle-first via utils.bin_paths, then system PATH."""
+    return find_r_bin()
 
 
 def _find_quarto() -> str | None:
-    """Find quarto via PATH, then well-known install location."""
-    exe = shutil.which("quarto")
-    if exe:
-        return exe
-    if sys.platform == "win32":
-        fixed = r"C:\Program Files\Quarto\bin\quarto.exe"
-        if os.path.exists(fixed):
-            return fixed
-    return None
+    """Find quarto — bundle-first via utils.bin_paths, then system PATH."""
+    return find_quarto_bin()
 
 
 def _find_tlmgr() -> str | None:
-    """Find tlmgr via PATH, then well-known TinyTeX locations.
-
-    TinyTeX is installed into the SYSTEM account's AppData when setup runs as
-    SYSTEM, so we check that profile path explicitly alongside the current
-    user's profile.
-
-    On Windows, tlmgr is a .bat file.  shutil.which may miss it if PATHEXT
-    is not inherited correctly in the frozen app, so we also try the explicit
-    .bat extension and a set of hardcoded fallback paths.
-    """
-    # Try PATH first — explicit .bat extension in case PATHEXT is stripped
-    exe = shutil.which("tlmgr") or shutil.which("tlmgr.bat")
-    if exe:
-        return exe
-    if sys.platform == "win32":
-        candidates = [
-            # Public location: setup copies TinyTeX here so all users can access it
-            r"C:\ProgramData\TinyTeX\bin\windows\tlmgr.bat",
-            # Current user's quarto tools dir (Quarto 1.4+)
-            os.path.join(
-                os.environ.get("APPDATA", ""),
-                r"quarto\tools\tinytex\bin\windows\tlmgr.bat",
-            ),
-            os.path.join(
-                os.environ.get("LOCALAPPDATA", ""),
-                r"quarto\tools\tinytex\bin\windows\tlmgr.bat",
-            ),
-            # SYSTEM account quarto tools dir (setup runs as SYSTEM)
-            r"C:\Windows\System32\config\systemprofile\AppData\Roaming\quarto\tools\tinytex\bin\windows\tlmgr.bat",
-            r"C:\Windows\System32\config\systemprofile\AppData\Local\quarto\tools\tinytex\bin\windows\tlmgr.bat",
-            # Legacy standalone TinyTeX location (older quarto / direct install)
-            r"C:\Windows\System32\config\systemprofile\AppData\Local\TinyTeX\bin\windows\tlmgr.bat",
-            r"C:\Windows\System32\config\systemprofile\AppData\Roaming\TinyTeX\bin\windows\tlmgr.bat",
-            r"C:\Windows\System32\config\systemprofile\AppData\Local\Programs\TinyTeX\bin\windows\tlmgr.bat",
-            os.path.join(
-                os.environ.get("LOCALAPPDATA", ""), r"TinyTeX\bin\windows\tlmgr.bat"
-            ),
-            os.path.join(
-                os.environ.get("APPDATA", ""), r"TinyTeX\bin\windows\tlmgr.bat"
-            ),
-            os.path.join(
-                os.environ.get("LOCALAPPDATA", ""),
-                r"Programs\TinyTeX\bin\windows\tlmgr.bat",
-            ),
-        ]
-        for c in candidates:
-            if c and os.path.exists(c):
-                return c
-    elif sys.platform.startswith("linux") or sys.platform == "darwin":
-        # Quarto 1.4+ tools dir on Linux/Mac
-        home = str(Path.home())
-        linux_candidates = [
-            os.path.join(
-                home, ".local/share/quarto/tools/tinytex/bin/x86_64-linux/tlmgr"
-            ),
-            os.path.join(
-                home, ".local/share/quarto/tools/tinytex/bin/aarch64-linux/tlmgr"
-            ),
-            os.path.join(
-                home,
-                "Library/Application Support/quarto/tools/tinytex/bin/universal-darwin/tlmgr",
-            ),
-        ]
-        for c in linux_candidates:
-            if os.path.exists(c):
-                return c
-    return None
+    """Find tlmgr — bundle-first via utils.bin_paths, then system PATH."""
+    return find_tinytex_bin()
 
 
 def _setup_flag_dir() -> Path:
@@ -204,12 +125,8 @@ def setup_status() -> str:
 
 
 def _r_lib_path() -> Path | None:
-    """Return the bundled R library path when frozen (mirrors app/main.py logic)."""
-    if getattr(sys, "frozen", False):
-        lib = Path(sys.executable).parent / "r-library"
-        if lib.exists():
-            return lib
-    return None
+    """Return the bundled R package library path via utils.bin_paths."""
+    return find_r_library()
 
 
 # ---------------------------------------------------------------------------

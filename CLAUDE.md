@@ -110,7 +110,12 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 
 ## Packaging strategy
 
-**Staged installer** — NSIS (Windows) / postinst (Linux) silently downloads and installs R, Quarto, TinyTeX, and R packages during installation. Python is bundled by PyInstaller (`--onedir`).
+**Bundled installer** — R, Quarto, TinyTeX, and all R packages are downloaded and pre-installed during the **CI build**, then shipped inside the release artifact alongside the Python app. No network access or post-install scripts are needed on the end-user machine.
+
+- Python is bundled by PyInstaller (`--onedir`) as before.
+- R portable, Quarto portable, TinyTeX, and the R package library are baked into the build artifact at CI time and placed under `_internal/` (frozen) / `vendor/` (dev convention).
+- The staged installer approach (NSIS post-install scripts, `setup_linux.sh`, `setup_macos.sh`, `setup_dependencies.ps1`, `postinst.sh`) is **replaced** by pre-bundled deps. These scripts are retained temporarily for reference but will be removed once the bundled build is verified.
+- End-user installer is larger (~400–600 MB) but truly self-contained and offline-capable.
 
 `ResilienceReport.qmd` and `SCROLReport.qmd` are deeply LaTeX-dependent (TikZ, kableExtra, custom titlepage extension, custom fonts, raw `.tex` includes). **The PDF engine cannot be switched to Typst or WeasyPrint** — TinyTeX is required.
 
@@ -120,10 +125,21 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 
 | Dependency | Version | Notes |
 |---|---|---|
-| R | 4.5.1 | Pinned — SYSTEM account has no network at install time |
-| Quarto | 1.6.39 | GitHub releases |
-| TinyTeX | Quarto-pinned | `quarto install tinytex` |
+| R | 4.5.1 | Pinned — downloaded in CI, bundled into artifact |
+| Quarto | 1.6.39 | GitHub releases — bundled into artifact |
+| TinyTeX | Quarto-pinned | `quarto install tinytex` — bundled into artifact |
 | Python | ≥ 3.11 | Bundled by PyInstaller |
+
+### Bundle path resolution (frozen app)
+
+| Component | Frozen path | Dev path |
+|---|---|---|
+| Rscript | `{_MEIPASS}/r/bin/Rscript` (Win: `.../R/bin/Rscript.exe`) | system PATH or `vendor/r/bin/Rscript` |
+| quarto | `{_MEIPASS}/quarto/bin/quarto` | system PATH or `vendor/quarto/bin/quarto` |
+| tlmgr / pdflatex | `{_MEIPASS}/tinytex/bin/<arch>/tlmgr` | system PATH or `vendor/tinytex/...` |
+| R library | `{_MEIPASS}/r-library/` | `vendor/r-library/` |
+
+`app/app_paths.py` must expose `R_BIN`, `QUARTO_BIN`, `TINYTEX_BIN` constants that resolve bundle paths first, falling back to system PATH for dev convenience.
 
 ### R packages
 
@@ -133,7 +149,7 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 
 `pgf`, `xcolor`, `colortbl`, `booktabs`, `multirow`, `float`, `wrapfig`, `pdflscape`, `geometry`, `preprint`, `graphics`, `tabu`, `threeparttable`, `threeparttablex`, `ulem`, `makecell`, `environ`, `trimspaces`, `caption`, `hyperref`, `setspace`, `fancyhdr`, `microtype`, `lm`, `needspace`, `varwidth`, `mdwtools`, `xstring`, `tools`
 
-**Note:** `capt-of` is NOT installed via tlmgr — a minimal stub is written by the installer scripts directly and registered with `mktexlsr`.
+**Note:** `capt-of` stub is written at build time and bundled — not installed at end-user machine.
 
 ---
 
@@ -169,11 +185,14 @@ emails via Outlook COM (Windows) or SMTP fallback (Office365)
 | M55 | GUI audit: removed dead "Run Quality Dashboard" / "Run Data Cleaner" buttons (scripts missing) |
 | M56 | GUI visual upgrade: sv-ttk Sun Valley theme, card-style stats, Segoe UI fonts |
 | M57 | Email sender profiles: named profiles in config.yml, profile selector in SMTP tab, "Sending from:" in Send tab |
+| M58–M61 | Round-5 review fixes (REVIEW5.md): progress bar, askyesnocancel check, _current_version dedup, CSV-miss warning, email validation, set lookup, font consistency |
+| M62 | macOS (Apple Silicon) build target: darwin paths, setup_macos.sh, DMG CI, 134 new tests (268 → 402 total) |
+| M63 | **Architecture pivot: bundled installer** — pre-bake R + Quarto + TinyTeX + R packages into CI artifact; `utils/bin_paths.py` for bundle-first resolution; remove staged post-install scripts; add `R_BIN`/`QUARTO_BIN`/`TINYTEX_BIN` to `app_paths.py`; 420 tests |
 
-**Current version: v0.21.57 — 268 tests, ruff clean**
+**Current version: v0.21.63 — 420 tests, ruff clean**
 
 ---
 
 ## Active milestones
 
-All milestones M1–M57 complete.
+All milestones M1–M63 complete.

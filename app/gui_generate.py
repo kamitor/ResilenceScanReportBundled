@@ -2,7 +2,6 @@
 GenerationMixin — PDF generation tab and all report-generation methods.
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -17,10 +16,11 @@ import pandas as pd
 from app.app_paths import (
     DATA_FILE,
     DEFAULT_OUTPUT_DIR,
+    QUARTO_BIN,
     _DATA_ROOT,
     _check_r_packages_ready,
-    _r_library_path,
 )
+from utils.bin_paths import build_r_env
 from utils.constants import QUARTO_TIMEOUT_SECONDS, SCORE_COLUMNS
 from utils.filename_utils import safe_display_name, safe_filename
 
@@ -318,8 +318,10 @@ class GenerationMixin:
             out_dir.mkdir(parents=True, exist_ok=True)
             temp_name = f"temp_{safe_company}_{safe_person}.pdf"
             temp_path = out_dir / temp_name
+            if not QUARTO_BIN:
+                raise FileNotFoundError("quarto binary not found in bundle or PATH")
             cmd = [
-                "quarto",
+                QUARTO_BIN,
                 "render",
                 str(selected_template),
                 "-P",
@@ -343,15 +345,8 @@ class GenerationMixin:
             )
             self.status_label.config(text=f"Generating: {company} - {person}")
 
-            # Build env — inject R_LIBS so R finds packages in the bundled
-            # r-library/ dir installed by the setup script.
-            single_env = os.environ.copy()
-            r_lib = _r_library_path()
-            if r_lib is not None and r_lib.exists():
-                existing = single_env.get("R_LIBS", "")
-                single_env["R_LIBS"] = (
-                    f"{r_lib}{os.pathsep}{existing}" if existing else str(r_lib)
-                )
+            # Build env — set R_HOME and R_LIBS for the bundled R installation.
+            single_env = build_r_env()
 
             # Execute quarto render — cwd=_DATA_ROOT so quarto writes .quarto/
             # there (writable) and R finds data/cleaned_master.csv correctly.
@@ -447,11 +442,11 @@ class GenerationMixin:
 
         except FileNotFoundError:
             self.log_gen(
-                "[ERROR] Quarto not found - please install from https://quarto.org"
+                "[ERROR] Quarto not found in bundle — installation may be corrupted"
             )
             messagebox.showerror(
                 "Quarto Not Found",
-                "Quarto is not installed.\n\nPlease install from https://quarto.org",
+                "Quarto was not found in the application bundle.\n\nPlease reinstall the application.",
             )
             self.status_label.config(text="Error")
         except subprocess.TimeoutExpired:
@@ -641,12 +636,14 @@ class GenerationMixin:
                 # --output must be a bare filename (no path separators) — Quarto
                 # 1.6.x rejects any path component in --output.  Use --output-dir
                 # to redirect the PDF to the user-selected out_dir.
+                if not QUARTO_BIN:
+                    raise FileNotFoundError("quarto binary not found in bundle or PATH")
                 selected_template = _DATA_ROOT / self.template_var.get()
                 out_dir.mkdir(parents=True, exist_ok=True)
                 temp_name = f"temp_{safe_company}_{safe_person}.pdf"
                 temp_path = out_dir / temp_name
                 cmd = [
-                    "quarto",
+                    QUARTO_BIN,
                     "render",
                     str(selected_template),
                     "-P",
@@ -665,15 +662,9 @@ class GenerationMixin:
                     str(out_dir),
                 ]
 
-                # Build subprocess environment — inject R_LIBS if frozen so
-                # Quarto finds the R packages bundled by the installer.
-                gen_env = os.environ.copy()
-                r_lib = _r_library_path()
-                if r_lib is not None and r_lib.exists():
-                    existing = gen_env.get("R_LIBS", "")
-                    gen_env["R_LIBS"] = (
-                        f"{r_lib}{os.pathsep}{existing}" if existing else str(r_lib)
-                    )
+                # Build subprocess environment — set R_HOME and R_LIBS for the
+                # bundled R installation.
+                gen_env = build_r_env()
 
                 # Execute quarto render — cwd=_DATA_ROOT so quarto writes
                 # .quarto/ there (writable) and R finds data/ correctly.
@@ -779,7 +770,7 @@ class GenerationMixin:
             except FileNotFoundError:
                 failed += 1
                 self.log_gen(
-                    "  [ERROR] Error: Quarto not found - please install from https://quarto.org"
+                    "  [ERROR] Error: Quarto not found in bundle — installation may be corrupted"
                 )
             except subprocess.TimeoutExpired:
                 failed += 1
