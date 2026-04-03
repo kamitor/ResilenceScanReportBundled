@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResilienceScan Report Builder</title>
+  <meta name="description" content="Generate personalised PDF resilience reports at the click of a button. Windows, Linux, and macOS. Fully self-contained — no internet required after install.">
+  <style>
+    :root {
+      --accent:   #2563eb;
+      --accent2:  #1d4ed8;
+      --green:    #16a34a;
+      --bg:       #0f172a;
+      --bg2:      #1e293b;
+      --bg3:      #334155;
+      --text:     #f1f5f9;
+      --muted:    #94a3b8;
+      --border:   #334155;
+      --radius:   12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(15,23,42,0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px;
+    }
+    .nav-brand { font-weight: 700; font-size: 1rem; color: var(--text); }
+    .nav-links { display: flex; gap: 1.75rem; }
+    .nav-links a { color: var(--muted); font-size: 0.9rem; transition: color .15s; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 6rem 2rem 5rem;
+      text-align: center;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, #1e3a6e 0%, transparent 70%);
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: .45rem;
+      background: rgba(37,99,235,.15); border: 1px solid rgba(37,99,235,.35);
+      color: #93c5fd; border-radius: 999px;
+      padding: .3rem .9rem; font-size: .8rem; font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; }
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800; letter-spacing: -.03em;
+      line-height: 1.1; margin-bottom: 1.25rem;
+    }
+    h1 span { color: #60a5fa; }
+    .hero-sub {
+      max-width: 600px; margin: 0 auto 2.5rem;
+      color: var(--muted); font-size: 1.15rem;
+    }
+    .btn-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .75rem 1.5rem; border-radius: var(--radius);
+      font-size: .95rem; font-weight: 600; cursor: pointer;
+      transition: all .15s; border: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent2); text-decoration: none; }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { background: var(--bg2); text-decoration: none; }
+
+    /* ── Platform pills ── */
+    .platform-row {
+      display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap;
+      margin-top: 3rem; color: var(--muted); font-size: .85rem;
+    }
+    .platform-pill {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 999px; padding: .35rem .9rem;
+    }
+    .platform-pill svg { flex-shrink: 0; }
+
+    /* ── Sections ── */
+    section { padding: 5rem 2rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .section-label {
+      font-size: .8rem; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: #60a5fa; margin-bottom: .75rem;
+    }
+    h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; margin-bottom: 1rem; }
+    .section-sub { color: var(--muted); max-width: 560px; font-size: 1.05rem; }
+
+    /* ── Feature grid ── */
+    .features { background: var(--bg2); }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem; margin-top: 3rem;
+    }
+    .feature-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      transition: border-color .2s;
+    }
+    .feature-card:hover { border-color: #3b82f6; }
+    .feature-icon {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: rgba(37,99,235,.15); border: 1px solid rgba(37,99,235,.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; margin-bottom: 1rem;
+    }
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: .4rem; }
+    .feature-card p { color: var(--muted); font-size: .9rem; }
+
+    /* ── Pipeline ── */
+    .pipeline-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0; margin-top: 3rem; position: relative;
+    }
+    .pipeline-step {
+      background: var(--bg2); border: 1px solid var(--border);
+      padding: 1.5rem; text-align: center; position: relative;
+    }
+    .pipeline-step:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+    .pipeline-step:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+    .pipeline-step:not(:last-child)::after {
+      content: "→";
+      position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
+      color: var(--accent); font-size: 1.2rem; z-index: 1;
+    }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: .8rem; font-weight: 800; margin-bottom: .75rem;
+    }
+    .pipeline-step h3 { font-size: .95rem; font-weight: 700; margin-bottom: .3rem; }
+    .pipeline-step p  { color: var(--muted); font-size: .82rem; }
+
+    /* ── Download ── */
+    .download { background: var(--bg2); }
+    .dl-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.25rem; margin-top: 2.5rem;
+    }
+    .dl-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      display: flex; flex-direction: column; gap: .75rem;
+    }
+    .dl-card-header {
+      display: flex; align-items: center; gap: .75rem;
+    }
+    .dl-os-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--bg3); display: flex; align-items: center;
+      justify-content: center; font-size: 1.4rem; flex-shrink: 0;
+    }
+    .dl-card h3 { font-size: 1rem; font-weight: 700; }
+    .dl-card .dl-sub { color: var(--muted); font-size: .83rem; }
+    .dl-links { display: flex; flex-direction: column; gap: .5rem; }
+    .dl-link {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .6rem .85rem;
+      font-size: .85rem; color: var(--text);
+      transition: background .15s, border-color .15s;
+    }
+    .dl-link:hover { background: var(--bg3); border-color: #3b82f6; text-decoration: none; }
+    .dl-link-label { font-weight: 500; }
+    .dl-link-type { color: var(--muted); font-size: .78rem; }
+
+    /* ── Status ── */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem; margin-top: 2.5rem;
+    }
+    .stat-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem 1.5rem;
+    }
+    .stat-value { font-size: 1.8rem; font-weight: 800; color: #60a5fa; }
+    .stat-label { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+
+    /* ── Tech stack ── */
+    .tech-grid {
+      display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem;
+    }
+    .tech-pill {
+      display: inline-flex; align-items: center; gap: .45rem;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .5rem 1rem;
+      font-size: .875rem; font-weight: 500; color: var(--text);
+    }
+    .tech-pill .chip { width: 10px; height: 10px; border-radius: 3px; }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg2); border-top: 1px solid var(--border);
+      padding: 2.5rem 2rem; text-align: center;
+      color: var(--muted); font-size: .875rem;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .pipeline-steps { grid-template-columns: 1fr; }
+      .pipeline-step:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+      .pipeline-step:last-child  { border-radius: 0 0 var(--radius) var(--radius); }
+      .pipeline-step:not(:last-child)::after { content: "↓"; right: 50%; bottom: -14px; top: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav>
+  <span class="nav-brand">ResilienceScan Report Builder</span>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How it works</a>
+    <a href="#download">Download</a>
+    <a href="#status">Status</a>
+    <a href="https://github.com/kamitor/ResilenceScanReportBundled" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="badge"><span class="dot"></span> v0.21.63 — All milestones complete</div>
+  <h1>Generate <span>ResilienceScan</span><br>reports in seconds</h1>
+  <p class="hero-sub">
+    A self-contained desktop app that turns survey data into personalised,
+    professionally-typeset PDF reports — and emails them to every respondent automatically.
+  </p>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="#download">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </a>
+    <a class="btn btn-outline" href="https://github.com/kamitor/ResilenceScanReportBundled" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+  <div class="platform-row">
+    <span class="platform-pill">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+      Windows
+    </span>
+    <span class="platform-pill">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.581 19.049c-.55.446-1.558 1.093-2.708 1.069-1.573-.041-2.048-.955-3.832-.955-1.782 0-2.312.923-3.832.955-1.03.023-2.146-.484-2.708-.984C5.35 17.49 4.5 15.62 4.5 12c0-4.5 2.936-7.5 7.5-7.5 2.209 0 3.819.974 4.845 2.009 1.007-1.043 2.6-2.009 4.845-2.009 4.564 0 7.5 3 7.5 7.5 0 3.62-.85 5.49-2.609 7.049z"/></svg>
+      macOS Apple Silicon
+    </span>
+    <span class="platform-pill">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-7.77 2.65-8.98 6.5-1.03 3.284.19 6.97 2.96 9.012.48.345.782.95.792 1.567v1.05c0 .552.394 1.008.954 1.068l1.042.117A1.07 1.07 0 0 0 10 18.47V20.5c0 .554.448 1.004 1 1.004h2c.552 0 1-.45 1-1.004v-2.03a1.07 1.07 0 0 0 1.208-1.237l1.042-.117c.56-.06.954-.516.954-1.068v-1.05c.01-.617.312-1.222.792-1.567 2.77-2.04 3.99-5.728 2.96-9.012-1.21-3.85-4.754-6.167-8.98-6.5C12.818.008 12.658 0 12.504 0z"/></svg>
+      Linux
+    </span>
+    <span class="platform-pill" style="color:#16a34a">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      No internet needed
+    </span>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2>Everything you need, nothing you don't</h2>
+    <p class="section-sub">
+      Purpose-built for ResilienceScan survey coordinators who need to go from raw data to
+      delivered reports without fighting with software.
+    </p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📄</div>
+        <h3>Personalised PDF reports</h3>
+        <p>One professionally-typeset, LaTeX-rendered PDF per respondent — radar charts, score tables, and narrative sections generated from their individual data.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Batch generation</h3>
+        <p>Render reports for hundreds of respondents in one click. The GUI shows live progress and lets you cancel at any time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📧</div>
+        <h3>Automated email delivery</h3>
+        <p>Send each report directly to the right recipient via Outlook COM (Windows) or SMTP. Re-runs skip people who already received their report.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📥</div>
+        <h3>Multi-format import</h3>
+        <p>Import respondent data from Excel (.xlsx, .xlsm, .xls), CSV, JSON, JSONL, ODS, or SpreadsheetML. New records are upserted without overwriting existing send history.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📦</div>
+        <h3>Fully self-contained</h3>
+        <p>R, Quarto, TinyTeX, and all 19 R packages are bundled inside the installer. No internet access, no post-install scripts, no dependency hunting.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">✅</div>
+        <h3>Built-in validation</h3>
+        <p>Every generated PDF is automatically validated against the source CSV — catching rendering errors before reports reach respondents.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure SMTP credentials</h3>
+        <p>Passwords are stored in the OS keyring (Windows Credential Manager, macOS Keychain, or Linux Secret Service) — never in plaintext config files.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🖥️</div>
+        <h3>Cross-platform GUI</h3>
+        <p>Native look-and-feel on Windows (Sun Valley theme), macOS, and Linux via Tkinter. No browser, no Electron, no cloud dependency.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section id="how-it-works">
+  <div class="container">
+    <div class="section-label">How it works</div>
+    <h2>Four steps from data to inbox</h2>
+    <p class="section-sub">The GUI walks you through each stage. Every step can also be run independently from the command line.</p>
+    <div class="pipeline-steps">
+      <div class="pipeline-step">
+        <div class="step-num">1</div>
+        <h3>Import</h3>
+        <p>Load an Excel, CSV, or JSON file. Columns are normalised and upserted into the master data store.</p>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">2</div>
+        <h3>Generate</h3>
+        <p>One PDF per respondent is rendered via Quarto + R + TinyTeX. Radar charts, score tables, and narrative auto-populated.</p>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">3</div>
+        <h3>Validate</h3>
+        <p>Every PDF is checked against the source data. Mismatches are flagged before anything is sent.</p>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">4</div>
+        <h3>Send</h3>
+        <p>Reports are emailed to each respondent. Status tracked per-person so re-runs never double-send.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Download ── -->
+<section class="download" id="download">
+  <div class="container">
+    <div class="section-label">Download</div>
+    <h2>Get started in minutes</h2>
+    <p class="section-sub">
+      Current release: <strong>v0.21.63</strong> — bundled installer, no post-install setup required.
+      All downloads are on the <a href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest" target="_blank" rel="noopener">GitHub Releases</a> page.
+    </p>
+    <div class="dl-grid">
+
+      <div class="dl-card">
+        <div class="dl-card-header">
+          <div class="dl-os-icon">🪟</div>
+          <div>
+            <h3>Windows</h3>
+            <div class="dl-sub">Windows 10 / 11 · x86_64</div>
+          </div>
+        </div>
+        <div class="dl-links">
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-windows-setup.exe">
+            <span class="dl-link-label">Installer (.exe)</span>
+            <span class="dl-link-type">Recommended</span>
+          </a>
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-windows-portable.zip">
+            <span class="dl-link-label">Portable (.zip)</span>
+            <span class="dl-link-type">No install needed</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="dl-card">
+        <div class="dl-card-header">
+          <div class="dl-os-icon">🍎</div>
+          <div>
+            <h3>macOS</h3>
+            <div class="dl-sub">Apple Silicon (M1 / M2 / M3) · macOS 12+</div>
+          </div>
+        </div>
+        <div class="dl-links">
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-macos-arm64.dmg">
+            <span class="dl-link-label">DMG installer</span>
+            <span class="dl-link-type">Drag to Applications</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="dl-card">
+        <div class="dl-card-header">
+          <div class="dl-os-icon">🐧</div>
+          <div>
+            <h3>Linux</h3>
+            <div class="dl-sub">x86_64 · Ubuntu, Debian, and others</div>
+          </div>
+        </div>
+        <div class="dl-links">
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-amd64.deb">
+            <span class="dl-link-label">Debian package (.deb)</span>
+            <span class="dl-link-type">Ubuntu / Debian</span>
+          </a>
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-x86_64.AppImage">
+            <span class="dl-link-label">AppImage</span>
+            <span class="dl-link-type">Universal Linux</span>
+          </a>
+          <a class="dl-link" href="https://github.com/kamitor/ResilenceScanReportBundled/releases/latest/download/ResilenceScanReportBundled-0.21.63-linux-amd64.tar.gz">
+            <span class="dl-link-label">Tarball (.tar.gz)</span>
+            <span class="dl-link-type">Manual install</span>
+          </a>
+        </div>
+      </div>
+
+    </div>
+    <p style="margin-top:1.5rem; color: var(--muted); font-size:.875rem;">
+      All dependencies (R 4.5.1, Quarto 1.6.39, TinyTeX, 19 R packages) are bundled inside every installer.
+      No internet connection required after download.
+    </p>
+  </div>
+</section>
+
+<!-- ── Status ── -->
+<section id="status">
+  <div class="container">
+    <div class="section-label">Project status</div>
+    <h2>Production-ready</h2>
+    <p class="section-sub">All planned milestones complete. Actively maintained.</p>
+    <div class="status-grid">
+      <div class="stat-card">
+        <div class="stat-value">v0.21.63</div>
+        <div class="stat-label">Current version</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">420</div>
+        <div class="stat-label">Automated tests</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">63</div>
+        <div class="stat-label">Milestones completed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">3</div>
+        <div class="stat-label">Supported platforms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">19</div>
+        <div class="stat-label">Bundled R packages</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:#4ade80">Clean</div>
+        <div class="stat-label">ruff lint status</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Tech stack ── -->
+<section style="background: var(--bg2);">
+  <div class="container">
+    <div class="section-label">Built with</div>
+    <h2>Modern, battle-tested tooling</h2>
+    <p class="section-sub">Every component was chosen for reliability and long-term maintainability.</p>
+    <div class="tech-grid">
+      <span class="tech-pill"><span class="chip" style="background:#3b82f6"></span>Python 3.11+</span>
+      <span class="tech-pill"><span class="chip" style="background:#1d6fba"></span>R 4.5.1</span>
+      <span class="tech-pill"><span class="chip" style="background:#75b2dd"></span>Quarto 1.6.39</span>
+      <span class="tech-pill"><span class="chip" style="background:#008080"></span>TinyTeX / pdflatex</span>
+      <span class="tech-pill"><span class="chip" style="background:#6366f1"></span>Tkinter GUI</span>
+      <span class="tech-pill"><span class="chip" style="background:#f59e0b"></span>PyInstaller</span>
+      <span class="tech-pill"><span class="chip" style="background:#22c55e"></span>GitHub Actions CI</span>
+      <span class="tech-pill"><span class="chip" style="background:#ec4899"></span>ggplot2 + TikZ</span>
+      <span class="tech-pill"><span class="chip" style="background:#a78bfa"></span>kableExtra</span>
+      <span class="tech-pill"><span class="chip" style="background:#f97316"></span>SMTP / Outlook COM</span>
+      <span class="tech-pill"><span class="chip" style="background:#06b6d4"></span>OS keyring</span>
+      <span class="tech-pill"><span class="chip" style="background:#84cc16"></span>ruff</span>
+      <span class="tech-pill"><span class="chip" style="background:#ef4444"></span>pytest (420 tests)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <p>
+    ResilienceScan Report Builder · <a href="https://github.com/kamitor/ResilenceScanReportBundled" target="_blank" rel="noopener">GitHub</a> ·
+    <a href="https://github.com/kamitor/ResilenceScanReportBundled/releases" target="_blank" rel="noopener">Releases</a> ·
+    <a href="https://github.com/kamitor/ResilenceScanReportBundled/issues" target="_blank" rel="noopener">Issues</a>
+  </p>
+  <p style="margin-top:.5rem">Built with Python · R · Quarto · TinyTeX</p>
+</footer>
+
+</body>
+</html>
