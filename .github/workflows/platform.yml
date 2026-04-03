@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-14]
 
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +42,12 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-tk tk-dev
+
+      - name: Install system libraries (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tcl-tk
+          brew install python-tk@3.13 || true
 
       - name: Install Python dependencies
         run: |
@@ -99,6 +105,29 @@ jobs:
               sys.exit(1)
 
           print(f"OK: {len(rows)} rows, columns present: {sorted(rows[0].keys())[:6]}...")
+
+      # ── Bash script check (macOS only) ───────────────────────────────────
+      - name: Bash script check — setup_macos.sh
+        if: runner.os == 'macOS'
+        run: |
+          SCRIPT="packaging/setup_macos.sh"
+          # ASCII-only (non-ASCII bytes break bash on some macOS locales)
+          python3 -c "
+          import sys
+          data = open('$SCRIPT', 'rb').read()
+          bad = [(i, b) for i, b in enumerate(data) if b > 127]
+          if bad:
+              for pos, byte in bad[:5]:
+                  print(f'Non-ASCII 0x{byte:02X} at offset {pos}', file=sys.stderr)
+              sys.exit(1)
+          print('ASCII check passed')
+          "
+          # Must start with a bash shebang
+          head -1 "$SCRIPT" | grep -q '^#!/bin/bash' \
+            || { echo "::error::Missing #!/bin/bash shebang in $SCRIPT"; exit 1; }
+          # Dry-run syntax check via bash
+          bash -n "$SCRIPT" && echo "Bash syntax OK: $SCRIPT"
+          echo "setup_macos.sh checks passed."
 
       # ── PowerShell 5.1 syntax check (Windows only) ────────────────────────
       # shell: powershell invokes Windows PowerShell 5.1 -- the actual version

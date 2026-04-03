@@ -45,6 +45,24 @@ jobs:
       - name: Test
         run: pytest --maxfail=1 --disable-warnings -q
 
+      - name: Check setup_macos.sh (ASCII + shebang + bash syntax)
+        run: |
+          SCRIPT="packaging/setup_macos.sh"
+          python3 -c "
+          import sys
+          data = open('$SCRIPT', 'rb').read()
+          bad = [(i, b) for i, b in enumerate(data) if b > 127]
+          if bad:
+              for pos, byte in bad[:5]:
+                  print(f'Non-ASCII 0x{byte:02X} at offset {pos}', file=sys.stderr)
+              sys.exit(1)
+          print('ASCII check passed')
+          "
+          head -1 "$SCRIPT" | grep -q '^#!/' \
+            || { echo "::error::Missing shebang in $SCRIPT"; exit 1; }
+          bash -n "$SCRIPT" && echo "Bash syntax OK: $SCRIPT"
+          echo "setup_macos.sh checks passed."
+
       - name: Check PS1 script (syntax + encoding)
         shell: pwsh
         run: |
@@ -604,9 +622,101 @@ jobs:
           name: installer-smoke-log
           path: C:\ProgramData\ResilienceScan\
 
+  # ── macOS build smoke test: mount DMG, verify .app bundle structure ──────────
+  build-smoke-macos:
+    needs: [version-check, build]
+    if: needs.version-check.outputs.release == 'true'
+    runs-on: macos-14
+    env:
+      APP_VERSION: ${{ needs.version-check.outputs.version }}
+      REPO_NAME: ResilenceScanReportBuilder
+
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: dist
+
+      - name: Verify DMG exists and size
+        run: |
+          DMG=$(ls dist/*-macos-arm64.dmg 2>/dev/null | head -1)
+          [ -n "$DMG" ] || { echo "::error::No macOS DMG found in dist/"; ls dist/ || true; exit 1; }
+          SIZE=$(stat -f%z "$DMG")
+          echo "DMG: $(basename "$DMG")  size=${SIZE} bytes"
+          [ "$SIZE" -gt 1000000 ] \
+            || { echo "::error::DMG suspiciously small (${SIZE} bytes — expected >1 MB)"; exit 1; }
+          echo "DMG size OK."
+
+      - name: Mount DMG and verify app bundle
+        run: |
+          set -euo pipefail
+          DMG=$(ls dist/*-macos-arm64.dmg | head -1)
+          MOUNT_DIR=$(mktemp -d /tmp/dmg-smoke-XXXX)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          trap "hdiutil detach '$MOUNT_DIR' 2>/dev/null || true; rm -rf '$MOUNT_DIR'" EXIT
+
+          # Locate .app bundle inside DMG
+          APP=$(find "$MOUNT_DIR" -name "*.app" -maxdepth 2 2>/dev/null | head -1)
+          [ -n "$APP" ] || { echo "::error::No .app bundle found in DMG"; exit 1; }
+          echo "App bundle: $APP"
+
+          INTERNAL="$APP/Contents/MacOS/_internal"
+          BINARY="$APP/Contents/MacOS/$REPO_NAME"
+          fail=0
+
+          chk() {
+            if [ -e "$1" ]; then printf '  OK  %s\n' "$1"
+            else printf 'MISSING  %s\n' "$1"; fail=$((fail+1)); fi
+          }
+
+          echo "=== Bundle structure ==="
+          chk "$BINARY"
+          chk "$APP/Contents/Info.plist"
+          chk "$INTERNAL/ResilienceReport.qmd"
+          chk "$INTERNAL/SCROLReport.qmd"
+          chk "$INTERNAL/references.bib"
+          chk "$INTERNAL/QTDublinIrish.otf"
+          chk "$INTERNAL/setup_macos.sh"
+          chk "$INTERNAL/img"
+          chk "$INTERNAL/tex"
+          chk "$INTERNAL/_extensions"
+
+          # Binary must be executable
+          if [ -x "$BINARY" ]; then printf '  OK  binary is executable\n'
+          else printf 'FAIL  binary is not executable\n'; fail=$((fail+1)); fi
+
+          # setup_macos.sh: shebang + ASCII-only
+          SCRIPT="$INTERNAL/setup_macos.sh"
+          if [ -f "$SCRIPT" ]; then
+            head -1 "$SCRIPT" | grep -q '^#!/' \
+              && printf '  OK  setup_macos.sh shebang present\n' \
+              || { printf 'FAIL  setup_macos.sh missing shebang\n'; fail=$((fail+1)); }
+
+            python3 -c "
+          data = open('$SCRIPT', 'rb').read()
+          bad = [hex(b) for b in data if b > 127]
+          if bad:
+              raise SystemExit('Non-ASCII bytes in setup_macos.sh: ' + str(bad[:5]))
+          print('  OK  setup_macos.sh ASCII-clean')
+            "
+          fi
+
+          echo "==="
+          [ "$fail" -eq 0 ] || { echo "::error::$fail check(s) failed"; exit 1; }
+          echo "macOS build smoke PASSED."
+
+      - name: Upload DMG info (always)
+        if: always()
+        run: |
+          DMG=$(ls dist/*-macos-arm64.dmg 2>/dev/null | head -1) || true
+          [ -n "$DMG" ] \
+            && echo "Artifact: $(basename "$DMG") — $(du -h "$DMG" | cut -f1)" \
+            || echo "No DMG artifact found."
+
   # ── Create the GitHub Release and attach all artifacts ───────────────────────
   publish:
-    needs: [version-check, build, installer-smoke]
+    needs: [version-check, build, installer-smoke, build-smoke-macos]
     runs-on: ubuntu-latest
 
     steps:
